@@ -21,6 +21,7 @@
 #ifndef _V4L2_SUBDEV_H
 #define _V4L2_SUBDEV_H
 
+#include <media/media-entity.h>
 #include <media/v4l2-common.h>
 #include <media/v4l2-dev.h>
 #include <media/v4l2-mediabus.h>
@@ -441,6 +442,8 @@ struct v4l2_subdev_ops {
    stand-alone or embedded in a larger struct.
  */
 struct v4l2_subdev {
+	struct media_entity entity;
+
 	struct list_head list;
 	struct module *owner;
 	u32 flags;
@@ -461,6 +464,8 @@ struct v4l2_subdev {
 	unsigned int nevents;
 };
 
+#define media_entity_to_v4l2_subdev(ent) \
+	container_of(ent, struct v4l2_subdev, entity)
 #define vdev_to_v4l2_subdev(vdev) \
 	container_of(vdev, struct v4l2_subdev, devnode)
 
@@ -478,6 +483,8 @@ static inline void *v4l2_get_subdevdata(const struct v4l2_subdev *sd)
 
 void v4l2_subdev_init(struct v4l2_subdev *sd,
 		      const struct v4l2_subdev_ops *ops);
+
+int v4l2_subdev_set_power(struct media_entity *entity, int power);
 
 /* Call an ops of a v4l2_subdev, doing the right checks against
    NULL pointers.

@@ -34,7 +34,8 @@ static int subdev_open(struct file *file)
 {
 	struct video_device *vdev = video_devdata(file);
 	struct v4l2_subdev *sd = vdev_to_v4l2_subdev(vdev);
-	struct v4l2_fh *vfh;
+	struct media_entity *entity;
+	struct v4l2_fh *vfh = NULL;
 	int ret;
 
 	if (!sd->initialized)
@@ -61,10 +62,19 @@ static int subdev_open(struct file *file)
 		file->private_data = vfh;
 	}
 
+	if (sd->v4l2_dev->mdev) {
+		entity = media_entity_get(&sd->entity);
+		if (!entity) {
+			ret = -EBUSY;
+			goto err;
+		}
+	}
+
 	return 0;
 
 err:
 	if (vfh != NULL) {
+		v4l2_fh_del(vfh);
 		v4l2_fh_exit(vfh);
 		kfree(vfh);
 	}
@@ -74,7 +84,12 @@ err:
 
 static int subdev_close(struct file *file)
 {
+	struct video_device *vdev = video_devdata(file);
+	struct v4l2_subdev *sd = vdev_to_v4l2_subdev(vdev);
 	struct v4l2_fh *vfh = file->private_data;
+
+	if (sd->v4l2_dev->mdev)
+		media_entity_put(&sd->entity);
 
 	if (vfh != NULL) {
 		v4l2_fh_del(vfh);
@@ -174,5 +189,18 @@ void v4l2_subdev_init(struct v4l2_subdev *sd, const struct v4l2_subdev_ops *ops)
 	sd->grp_id = 0;
 	sd->priv = NULL;
 	sd->initialized = 1;
+	sd->entity.name = sd->name;
+	sd->entity.type = MEDIA_ENTITY_TYPE_SUBDEV;
 }
 EXPORT_SYMBOL(v4l2_subdev_init);
+
+int v4l2_subdev_set_power(struct media_entity *entity, int power)
+{
+	struct v4l2_subdev *sd = media_entity_to_v4l2_subdev(entity);
+
+	dev_dbg(entity->parent->dev,
+		"%s power%s\n", entity->name, power ? "on" : "off");
+
+	return v4l2_subdev_call(sd, core, s_power, power);
+}
+EXPORT_SYMBOL_GPL(v4l2_subdev_set_power);
