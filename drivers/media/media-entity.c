@@ -200,6 +200,25 @@ EXPORT_SYMBOL_GPL(media_entity_graph_walk_next);
  * Power state handling
  */
 
+/*
+ * Return power count of nodes directly or indirectly connected to
+ * a given entity.
+ */
+static int media_entity_count_node(struct media_entity *entity)
+{
+	struct media_entity_graph graph;
+	int use = 0;
+
+	media_entity_graph_walk_start(&graph, entity);
+
+	while ((entity = media_entity_graph_walk_next(&graph))) {
+		if (media_entity_type(entity) == MEDIA_ENTITY_TYPE_NODE)
+			use += entity->use_count;
+	}
+
+	return use;
+}
+
 /* Apply use count to an entity. */
 static void media_entity_use_apply_one(struct media_entity *entity, int change)
 {
@@ -261,6 +280,32 @@ static int media_entity_power_apply(struct media_entity *entity, int change)
 			media_entity_power_apply_one(first, -change);
 
 	return ret;
+}
+
+/* Apply the power state changes when connecting two entities. */
+static int media_entity_power_connect(struct media_entity *one,
+				      struct media_entity *theother)
+{
+	int power_one = media_entity_count_node(one);
+	int power_theother = media_entity_count_node(theother);
+	int ret = 0;
+
+	ret = media_entity_power_apply(one, power_theother);
+	if (ret < 0)
+		return ret;
+
+	return media_entity_power_apply(theother, power_one);
+}
+
+static void media_entity_power_disconnect(struct media_entity *one,
+					  struct media_entity *theother)
+{
+	int power_one = media_entity_count_node(one);
+	int power_theother = media_entity_count_node(theother);
+
+	/* Powering off entities is assumed to never fail. */
+	media_entity_power_apply(one, -power_theother);
+	media_entity_power_apply(theother, -power_one);
 }
 
 /*
@@ -406,3 +451,166 @@ media_entity_create_link(struct media_entity *source, u16 source_pad,
 	return 0;
 }
 EXPORT_SYMBOL_GPL(media_entity_create_link);
+
+static int __media_entity_setup_link_notify(struct media_link *link, u32 flags)
+{
+	const u32 mask = MEDIA_LINK_FLAG_ACTIVE;
+	int ret;
+
+	/* Notify both entities. */
+	ret = media_entity_call(link->source->entity, link_setup,
+				link->source, link->sink, flags);
+	if (ret < 0 && ret != -ENOIOCTLCMD)
+		return ret;
+
+	ret = media_entity_call(link->sink->entity, link_setup,
+				link->sink, link->source, flags);
+	if (ret < 0 && ret != -ENOIOCTLCMD) {
+		media_entity_call(link->source->entity, link_setup,
+				  link->source, link->sink, link->flags);
+		return ret;
+	}
+
+	link->flags = (link->flags & ~mask) | (flags & mask);
+	link->reverse->flags = link->flags;
+
+	return 0;
+}
+
+/**
+ * __media_entity_setup_link - Configure a media link
+ * @link: The link being configured
+ * @flags: Link configuration flags
+ *
+ * The bulk of link setup is handled by the two entities connected through the
+ * link. This function notifies both entities of the link configuration change.
+ *
+ * If the link is immutable or if the current and new configuration are
+ * identical, return immediately.
+ *
+ * The user is expected to hold link->source->parent->mutex. If not,
+ * media_entity_setup_link() should be used instead.
+ */
+int __media_entity_setup_link(struct media_link *link, u32 flags)
+{
+	struct media_entity *source, *sink;
+	int ret = -EBUSY;
+
+	if (link == NULL)
+		return -EINVAL;
+
+	if (link->flags & MEDIA_LINK_FLAG_IMMUTABLE)
+		return link->flags == flags ? 0 : -EINVAL;
+
+	if (link->flags == flags)
+		return 0;
+
+	source = __media_entity_get(link->source->entity);
+	if (!source)
+		return ret;
+
+	sink = __media_entity_get(link->sink->entity);
+	if (!sink)
+		goto err___media_entity_get;
+
+	if (flags & MEDIA_LINK_FLAG_ACTIVE) {
+		ret = media_entity_power_connect(source, sink);
+		if (ret < 0)
+			goto err_media_entity_power_connect;
+	}
+
+	ret = __media_entity_setup_link_notify(link, flags);
+	if (ret < 0)
+		goto err___media_entity_setup_link_notify;
+
+	if (!(flags & MEDIA_LINK_FLAG_ACTIVE))
+		media_entity_power_disconnect(source, sink);
+
+	__media_entity_put(sink);
+	__media_entity_put(source);
+
+	return 0;
+
+err___media_entity_setup_link_notify:
+	if (flags & MEDIA_LINK_FLAG_ACTIVE)
+		media_entity_power_disconnect(source, sink);
+err_media_entity_power_connect:
+	__media_entity_put(sink);
+err___media_entity_get:
+	__media_entity_put(source);
+
+	return ret;
+}
+
+int media_entity_setup_link(struct media_link *link, u32 flags)
+{
+	int ret;
+
+	mutex_lock(&link->source->entity->parent->graph_mutex);
+	ret = __media_entity_setup_link(link, flags);
+	mutex_unlock(&link->source->entity->parent->graph_mutex);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(media_entity_setup_link);
+
+/**
+ * media_entity_find_link - Find a link between two pads
+ * @source: Source pad
+ * @sink: Sink pad
+ *
+ * Return a pointer to the link between the two entities. If no such link
+ * exists, return NULL.
+ */
+struct media_link *
+media_entity_find_link(struct media_pad *source, struct media_pad *sink)
+{
+	struct media_link *link;
+	unsigned int i;
+
+	for (i = 0; i < source->entity->num_links; ++i) {
+		link = &source->entity->links[i];
+
+		if (link->source->entity == source->entity &&
+		    link->source->index == source->index &&
+		    link->sink->entity == sink->entity &&
+		    link->sink->index == sink->index)
+			return link;
+	}
+
+	return NULL;
+}
+EXPORT_SYMBOL_GPL(media_entity_find_link);
+
+/**
+ * media_entity_remote_source - Find the source pad at the remote end of a link
+ * @pad: Sink pad at the local end of the link
+ *
+ * Search for a remote source pad connected to the given sink pad by iterating
+ * over all links originating or terminating at that pad until an active link is
+ * found.
+ *
+ * Return a pointer to the pad at the remote end of the first found active link,
+ * or NULL if no active link has been found.
+ */
+struct media_pad *media_entity_remote_source(struct media_pad *pad)
+{
+	unsigned int i;
+
+	for (i = 0; i < pad->entity->num_links; i++) {
+		struct media_link *link = &pad->entity->links[i];
+
+		if (!(link->flags & MEDIA_LINK_FLAG_ACTIVE))
+			continue;
+
+		if (link->source == pad)
+			return link->sink;
+
+		if (link->sink == pad)
+			return link->source;
+	}
+
+	return NULL;
+
+}
+EXPORT_SYMBOL_GPL(media_entity_remote_source);
