@@ -45,7 +45,31 @@ static int subdev_close(struct file *file)
 
 static long subdev_do_ioctl(struct file *file, unsigned int cmd, void *arg)
 {
+	struct video_device *vdev = video_devdata(file);
+	struct v4l2_subdev *sd = vdev_to_v4l2_subdev(vdev);
+
 	switch (cmd) {
+	case VIDIOC_QUERYCTRL:
+		return v4l2_subdev_call(sd, core, queryctrl, arg);
+
+	case VIDIOC_QUERYMENU:
+		return v4l2_subdev_call(sd, core, querymenu, arg);
+
+	case VIDIOC_G_CTRL:
+		return v4l2_subdev_call(sd, core, g_ctrl, arg);
+
+	case VIDIOC_S_CTRL:
+		return v4l2_subdev_call(sd, core, s_ctrl, arg);
+
+	case VIDIOC_G_EXT_CTRLS:
+		return v4l2_subdev_call(sd, core, g_ext_ctrls, arg);
+
+	case VIDIOC_S_EXT_CTRLS:
+		return v4l2_subdev_call(sd, core, s_ext_ctrls, arg);
+
+	case VIDIOC_TRY_EXT_CTRLS:
+		return v4l2_subdev_call(sd, core, try_ext_ctrls, arg);
+
 	default:
 		return -ENOIOCTLCMD;
 	}
