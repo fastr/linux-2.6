@@ -266,6 +266,7 @@ static int v4l2_mmap(struct file *filp, struct vm_area_struct *vm)
 static int v4l2_open(struct inode *inode, struct file *filp)
 {
 	struct video_device *vdev;
+	struct media_entity *entity = NULL;
 	int ret = 0;
 
 	/* Check if the video device is available */
@@ -280,12 +281,23 @@ static int v4l2_open(struct inode *inode, struct file *filp)
 	/* and increase the device refcount */
 	video_get(vdev);
 	mutex_unlock(&videodev_lock);
+	if (vdev->v4l2_dev && vdev->v4l2_dev->mdev) {
+		entity = media_entity_get(&vdev->entity);
+		if (!entity) {
+			ret = -EBUSY;
+			video_put(vdev);
+			return ret;
+		}
+	}
 	if (vdev->fops->open)
 		ret = vdev->fops->open(filp);
 
 	/* decrease the refcount in case of an error */
-	if (ret)
+	if (ret) {
+		if (vdev->v4l2_dev && vdev->v4l2_dev->mdev)
+			media_entity_put(entity);
 		video_put(vdev);
+	}
 	return ret;
 }
 
@@ -297,6 +309,9 @@ static int v4l2_release(struct inode *inode, struct file *filp)
 
 	if (vdev->fops->release)
 		vdev->fops->release(filp);
+
+	if (vdev->v4l2_dev && vdev->v4l2_dev->mdev)
+		media_entity_put(&vdev->entity);
 
 	/* decrease the refcount unconditionally since the release()
 	   return value is ignored. */
@@ -545,11 +560,24 @@ int __video_register_device(struct video_device *vdev, int type, int nr,
 		printk(KERN_WARNING "%s: requested %s%d, got %s\n", __func__,
 			name_base, nr, video_device_node_name(vdev));
 
-	/* Part 5: Activate this minor. The char device can now be used. */
+	/* Part 5: Register the entity. */
+	if (vdev->v4l2_dev && vdev->v4l2_dev->mdev) {
+		vdev->entity.type = MEDIA_ENTITY_TYPE_NODE_V4L;
+		vdev->entity.name = vdev->name;
+		vdev->entity.v4l.major = VIDEO_MAJOR;
+		vdev->entity.v4l.minor = vdev->minor;
+		ret = media_device_register_entity(vdev->v4l2_dev->mdev,
+			&vdev->entity);
+		if (ret < 0)
+			printk(KERN_ERR "error\n"); /* TODO */
+	}
+
+	/* Part 6: Activate this minor. The char device can now be used. */
 	set_bit(V4L2_FL_REGISTERED, &vdev->flags);
 	mutex_lock(&videodev_lock);
 	video_device[vdev->minor] = vdev;
 	mutex_unlock(&videodev_lock);
+
 	return 0;
 
 cleanup:
@@ -576,6 +604,9 @@ void video_unregister_device(struct video_device *vdev)
 	/* Check if vdev was ever registered at all */
 	if (!vdev || !video_is_registered(vdev))
 		return;
+
+	if (vdev->v4l2_dev && vdev->v4l2_dev->mdev)
+		media_device_unregister_entity(&vdev->entity);
 
 	clear_bit(V4L2_FL_REGISTERED, &vdev->flags);
 	device_unregister(&vdev->dev);
