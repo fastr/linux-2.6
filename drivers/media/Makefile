@@ -2,7 +2,7 @@
 # Makefile for the kernel multimedia device drivers.
 #
 
-media-objs	:= media-device.o media-devnode.o
+media-objs	:= media-device.o media-devnode.o media-entity.o
 
 obj-$(CONFIG_MEDIA_SUPPORT)	+= media.o
 
