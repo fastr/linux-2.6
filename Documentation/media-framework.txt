@@ -257,3 +257,40 @@ When the graph traversal is complete the function will return NULL.
 Graph traversal can be interrupted at any moment. No cleanup function call is
 required and the graph structure can be freed normally.
 
+
+Reference counting and power handling
+-------------------------------------
+
+Before accessing type-specific entities operations (such as the V4L2
+sub-device operations), drivers must acquire a reference to the entity. This
+ensures that the entity will be powered on and ready to accept requests.
+Similarly, after being done with an entity, drivers must release the
+reference.
+
+	media_entity_get(struct media_entity *entity)
+
+The function will increase the entity reference count. If the entity is a node
+(MEDIA_ENTITY_TYPE_NODE type), the reference count of all entities it is
+connected to, both directly or indirectly, through active links is increased.
+This ensures that the whole media pipeline will be ready to process
+
+Acquiring a reference to an entity increases the media device module reference
+count to prevent module unloading when an entity is being used.
+
+media_entity_get will return a pointer to the entity if successful, or NULL
+otherwise.
+
+	media_entity_put(struct media_entity *entity)
+
+The function will decrease the entity reference count and, for node entities,
+like media_entity_get, the reference count of all connected entities. Calling
+media_entity_put with a NULL argument is valid and will return immediately.
+
+When the first reference to an entity is acquired, or the last reference
+released, the entity's set_power operation is called. Entity drivers must
+implement the operation if they need to perform any power management task,
+such as turning powers or clocks on or off. If no power management is
+required, drivers don't need to provide a set_power operation. The operation
+is allowed to fail when turning power on, in which case the media_entity_get
+function will return NULL.
+

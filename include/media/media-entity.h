@@ -61,6 +61,10 @@ struct media_pad {
 	unsigned long flags;		/* Pad flags (MEDIA_PAD_FLAG_*) */
 };
 
+struct media_entity_operations {
+	int (*set_power)(struct media_entity *entity, int power);
+};
+
 struct media_entity {
 	struct list_head list;
 	struct media_device *parent;	/* Media device this entity belongs to*/
@@ -80,6 +84,10 @@ struct media_entity {
 
 	struct media_pad *pads;		/* Pads array (num_pads elements) */
 	struct media_link *links;	/* Links array (max_links elements)*/
+
+	const struct media_entity_operations *ops;	/* Entity operations */
+
+	int use_count;			/* Use count for the entity. */
 
 	union {
 		/* Node specifications */
@@ -125,9 +133,16 @@ void media_entity_cleanup(struct media_entity *entity);
 int media_entity_create_link(struct media_entity *source, u16 source_pad,
 		struct media_entity *sink, u16 sink_pad, u32 flags);
 
+struct media_entity *media_entity_get(struct media_entity *entity);
+void media_entity_put(struct media_entity *entity);
+
 void media_entity_graph_walk_start(struct media_entity_graph *graph,
 		struct media_entity *entity);
 struct media_entity *
 media_entity_graph_walk_next(struct media_entity_graph *graph);
+
+#define media_entity_call(entity, operation, args...)			\
+	(((entity)->ops && (entity)->ops->operation) ?			\
+	 (entity)->ops->operation((entity) , ##args) : -ENOIOCTLCMD)
 
 #endif

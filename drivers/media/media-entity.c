@@ -23,6 +23,7 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <media/media-entity.h>
+#include <media/media-device.h>
 
 /**
  * media_entity_init - Initialize a media entity
@@ -194,6 +195,151 @@ media_entity_graph_walk_next(struct media_entity_graph *graph)
 	return stack_pop(graph);
 }
 EXPORT_SYMBOL_GPL(media_entity_graph_walk_next);
+
+/* -----------------------------------------------------------------------------
+ * Power state handling
+ */
+
+/* Apply use count to an entity. */
+static void media_entity_use_apply_one(struct media_entity *entity, int change)
+{
+	entity->use_count += change;
+	WARN_ON(entity->use_count < 0);
+}
+
+/*
+ * Apply use count change to an entity and change power state based on
+ * new use count.
+ */
+static int media_entity_power_apply_one(struct media_entity *entity, int change)
+{
+	int ret;
+
+	if (entity->use_count == 0 && change > 0 &&
+	    entity->ops && entity->ops->set_power) {
+		ret = entity->ops->set_power(entity, 1);
+		if (ret)
+			return ret;
+	}
+
+	media_entity_use_apply_one(entity, change);
+
+	if (entity->use_count == 0 && change < 0 &&
+	    entity->ops && entity->ops->set_power)
+		entity->ops->set_power(entity, 0);
+
+	return 0;
+}
+
+/*
+ * Apply power change to all connected entities. This ignores the
+ * nodes.
+ */
+static int media_entity_power_apply(struct media_entity *entity, int change)
+{
+	struct media_entity_graph graph;
+	struct media_entity *first = entity;
+	int ret = 0;
+
+	if (!change)
+		return 0;
+
+	media_entity_graph_walk_start(&graph, entity);
+
+	while (!ret && (entity = media_entity_graph_walk_next(&graph)))
+		if (media_entity_type(entity) != MEDIA_ENTITY_TYPE_NODE)
+			ret = media_entity_power_apply_one(entity, change);
+
+	if (!ret)
+		return 0;
+
+	media_entity_graph_walk_start(&graph, first);
+
+	while ((first = media_entity_graph_walk_next(&graph))
+	       && first != entity)
+		if (media_entity_type(first) != MEDIA_ENTITY_TYPE_NODE)
+			media_entity_power_apply_one(first, -change);
+
+	return ret;
+}
+
+/*
+ * Apply use count change to graph and change power state of entities
+ * accordingly.
+ */
+static int media_entity_node_power_change(struct media_entity *entity,
+					  int change)
+{
+	/* Apply use count to node. */
+	media_entity_use_apply_one(entity, change);
+
+	/* Apply power change to connected non-nodes. */
+	return media_entity_power_apply(entity, change);
+}
+
+/*
+ * Node entity use changes are reflected on power state of all
+ * connected (directly or indirectly) entities whereas non-node entity
+ * use count changes are limited to that very entity.
+ */
+static int media_entity_use_change(struct media_entity *entity, int change)
+{
+	if (media_entity_type(entity) == MEDIA_ENTITY_TYPE_NODE)
+		return media_entity_node_power_change(entity, change);
+	else
+		return media_entity_power_apply_one(entity, change);
+}
+
+static struct media_entity *__media_entity_get(struct media_entity *entity)
+{
+	if (media_entity_use_change(entity, 1))
+		return NULL;
+
+	return entity;
+}
+
+static void __media_entity_put(struct media_entity *entity)
+{
+	media_entity_use_change(entity, -1);
+}
+
+/* user open()s media entity */
+struct media_entity *media_entity_get(struct media_entity *entity)
+{
+	struct media_entity *e;
+
+	if (entity == NULL)
+		return NULL;
+
+	if (entity->parent->dev &&
+	    !try_module_get(entity->parent->dev->driver->owner))
+		return NULL;
+
+	mutex_lock(&entity->parent->graph_mutex);
+	e = __media_entity_get(entity);
+	mutex_unlock(&entity->parent->graph_mutex);
+
+	if (e == NULL && entity->parent->dev)
+		module_put(entity->parent->dev->driver->owner);
+
+	return e;
+}
+EXPORT_SYMBOL_GPL(media_entity_get);
+
+/* user release()s media entity */
+void media_entity_put(struct media_entity *entity)
+{
+	if (entity == NULL)
+		return;
+
+	mutex_lock(&entity->parent->graph_mutex);
+	__media_entity_put(entity);
+	mutex_unlock(&entity->parent->graph_mutex);
+
+	if (entity->parent->dev)
+		module_put(entity->parent->dev->driver->owner);
+}
+EXPORT_SYMBOL_GPL(media_entity_put);
 
 /* -----------------------------------------------------------------------------
  * Links management
