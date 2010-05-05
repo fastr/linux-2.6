@@ -214,6 +214,22 @@ static long subdev_do_ioctl(struct file *file, unsigned int cmd, void *arg)
 					fse);
 	}
 
+	case VIDIOC_SUBDEV_G_FRAME_INTERVAL:
+		return v4l2_subdev_call(sd, video, g_frame_interval, arg);
+
+	case VIDIOC_SUBDEV_S_FRAME_INTERVAL:
+		return v4l2_subdev_call(sd, video, s_frame_interval, arg);
+
+	case VIDIOC_SUBDEV_ENUM_FRAME_INTERVAL: {
+		struct v4l2_subdev_frame_interval_enum *fie = arg;
+
+		if (fie->pad >= sd->entity.num_pads)
+			return -EINVAL;
+
+		return v4l2_subdev_call(sd, pad, enum_frame_interval, subdev_fh,
+					fie);
+	}
+
 	default:
 		return -ENOIOCTLCMD;
 	}
