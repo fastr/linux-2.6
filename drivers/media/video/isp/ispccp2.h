@@ -73,7 +73,7 @@ struct isp_interface_mem_config {
 struct isp_ccp2_device {
 	struct v4l2_subdev subdev;
 	struct v4l2_mbus_framefmt formats[CCP2_PADS_NUM];
-	struct media_entity_pad pads[CCP2_PADS_NUM];
+	struct media_pad pads[CCP2_PADS_NUM];
 	enum ccp2_input_entity input;
 	enum ccp2_output_entity output;
 	struct isp_interface_lcx_config if_cfg;

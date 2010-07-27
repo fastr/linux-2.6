@@ -327,12 +327,12 @@ static int ispccp2_if_configure(struct isp_ccp2_device *ccp2)
 	const struct isp_v4l2_subdevs_group *pdata;
 	struct isp_device *isp = to_isp_device(ccp2);
 	struct v4l2_mbus_framefmt *format;
-	struct media_entity_pad *pad;
+	struct media_pad *pad;
 	struct v4l2_subdev *sensor;
 	u32 lines = 0;
 	int ret;
 
-	pad = media_entity_remote_pad(&ccp2->pads[CCP2_PAD_SINK]);
+	pad = media_entity_remote_source(&ccp2->pads[CCP2_PAD_SINK]);
 	sensor = media_entity_to_v4l2_subdev(pad->entity);
 	pdata = sensor->host_priv;
 
@@ -596,10 +596,10 @@ static const unsigned int ccp2_fmts[] = {
  */
 static struct v4l2_mbus_framefmt *
 __ispccp2_get_format(struct isp_ccp2_device *ccp2, struct v4l2_subdev_fh *fh,
-		     unsigned int pad, enum v4l2_subdev_format which)
+		     unsigned int pad, enum v4l2_subdev_format_whence which)
 {
-	if (which == V4L2_SUBDEV_FORMAT_PROBE)
-		return v4l2_subdev_get_probe_format(fh, pad);
+	if (which == V4L2_SUBDEV_FORMAT_TRY)
+		return v4l2_subdev_get_try_format(fh, pad);
 	else
 		return &ccp2->formats[pad];
 }
@@ -615,7 +615,7 @@ __ispccp2_get_format(struct isp_ccp2_device *ccp2, struct v4l2_subdev_fh *fh,
 static void ispccp2_try_format(struct isp_ccp2_device *ccp2,
 			       struct v4l2_subdev_fh *fh, unsigned int pad,
 			       struct v4l2_mbus_framefmt *fmt,
-			       enum v4l2_subdev_format which)
+			       enum v4l2_subdev_format_whence which)
 {
 	struct v4l2_mbus_framefmt *format;
 
@@ -661,12 +661,12 @@ static void ispccp2_try_format(struct isp_ccp2_device *ccp2,
  * ispccp2_enum_mbus_code - Handle pixel format enumeration
  * @sd     : pointer to v4l2 subdev structure
  * @fh     : V4L2 subdev file handle
- * @code   : pointer to v4l2_subdev_pad_mbus_code_enum structure
+ * @code   : pointer to v4l2_subdev_mbus_code_enum structure
  * return -EINVAL or zero on success
  */
 static int ispccp2_enum_mbus_code(struct v4l2_subdev *sd,
 				  struct v4l2_subdev_fh *fh,
-				  struct v4l2_subdev_pad_mbus_code_enum *code)
+				  struct v4l2_subdev_mbus_code_enum *code)
 {
 	struct isp_ccp2_device *ccp2 = v4l2_get_subdevdata(sd);
 	struct v4l2_mbus_framefmt *format;
@@ -681,7 +681,7 @@ static int ispccp2_enum_mbus_code(struct v4l2_subdev *sd,
 			return -EINVAL;
 
 		format = __ispccp2_get_format(ccp2, fh, CCP2_PAD_SINK,
-					      V4L2_SUBDEV_FORMAT_PROBE);
+					      V4L2_SUBDEV_FORMAT_TRY);
 		code->code = format->code;
 	}
 
@@ -701,8 +701,7 @@ static int ispccp2_enum_frame_size(struct v4l2_subdev *sd,
 	format.code = fse->code;
 	format.width = 1;
 	format.height = 1;
-	ispccp2_try_format(ccp2, fh, fse->pad, &format,
-			   V4L2_SUBDEV_FORMAT_PROBE);
+	ispccp2_try_format(ccp2, fh, fse->pad, &format, V4L2_SUBDEV_FORMAT_TRY);
 	fse->min_width = format.width;
 	fse->min_height = format.height;
 
@@ -712,8 +711,7 @@ static int ispccp2_enum_frame_size(struct v4l2_subdev *sd,
 	format.code = fse->code;
 	format.width = -1;
 	format.height = -1;
-	ispccp2_try_format(ccp2, fh, fse->pad, &format,
-			   V4L2_SUBDEV_FORMAT_PROBE);
+	ispccp2_try_format(ccp2, fh, fse->pad, &format, V4L2_SUBDEV_FORMAT_TRY);
 	fse->max_width = format.width;
 	fse->max_height = format.height;
 
@@ -724,24 +722,20 @@ static int ispccp2_enum_frame_size(struct v4l2_subdev *sd,
  * ispccp2_get_format - Handle get format by pads subdev method
  * @sd    : pointer to v4l2 subdev structure
  * @fh    : V4L2 subdev file handle
- * @pad   : pad num
- * @fmt   : pointer to v4l2 mbus format structure
- * @which : wanted subdev format
+ * @fmt   : pointer to v4l2 subdev format structure
  * return -EINVAL or zero on sucess
  */
 static int ispccp2_get_format(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
-			      unsigned int pad, struct v4l2_mbus_framefmt *fmt,
-			      enum v4l2_subdev_format which)
+			      struct v4l2_subdev_format *fmt)
 {
 	struct isp_ccp2_device *ccp2 = v4l2_get_subdevdata(sd);
 	struct v4l2_mbus_framefmt *format;
 
-	format = __ispccp2_get_format(ccp2, fh, pad, which);
+	format = __ispccp2_get_format(ccp2, fh, fmt->pad, fmt->which);
 	if (format == NULL)
 		return -EINVAL;
 
-	memcpy(fmt, format, sizeof(*fmt));
-
+	fmt->format = *format;
 	return 0;
 }
 
@@ -749,30 +743,29 @@ static int ispccp2_get_format(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
  * ispccp2_set_format - Handle set format by pads subdev method
  * @sd    : pointer to v4l2 subdev structure
  * @fh    : V4L2 subdev file handle
- * @pad   : pad num
- * @fmt   : pointer to v4l2 mbus format structure
- * @which : wanted subdev format
+ * @fmt   : pointer to v4l2 subdev format structure
  * returns zero
  */
 static int ispccp2_set_format(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
-			      unsigned int pad, struct v4l2_mbus_framefmt *fmt,
-			      enum v4l2_subdev_format which)
+			      struct v4l2_subdev_format *fmt)
 {
 	struct isp_ccp2_device *ccp2 = v4l2_get_subdevdata(sd);
 	struct v4l2_mbus_framefmt *format;
 
-	format = __ispccp2_get_format(ccp2, fh, pad, which);
+	format = __ispccp2_get_format(ccp2, fh, fmt->pad, fmt->which);
 	if (format == NULL)
 		return -EINVAL;
 
-	ispccp2_try_format(ccp2, fh, pad, fmt, which);
-	memcpy(format, fmt, sizeof(*format));
+	ispccp2_try_format(ccp2, fh, fmt->pad, &fmt->format, fmt->which);
+	*format = fmt->format;
 
 	/* Propagate the format from sink to source */
-	if (pad == CCP2_PAD_SINK) {
-		format = __ispccp2_get_format(ccp2, fh, CCP2_PAD_SOURCE, which);
-		memcpy(format, fmt, sizeof(*format));
-		ispccp2_try_format(ccp2, fh, CCP2_PAD_SOURCE, format, which);
+	if (fmt->pad == CCP2_PAD_SINK) {
+		format = __ispccp2_get_format(ccp2, fh, CCP2_PAD_SOURCE,
+					      fmt->which);
+		*format = fmt->format;
+		ispccp2_try_format(ccp2, fh, CCP2_PAD_SOURCE, format,
+				   fmt->which);
 	}
 
 	return 0;
@@ -895,14 +888,14 @@ static const struct isp_video_operations ispccp2_video_ops = {
  * return -EINVAL on error or zero on success
  */
 static int ispccp2_link_setup(struct media_entity *entity,
-			const struct media_entity_pad *local,
-			const struct media_entity_pad *remote, u32 flags)
+			const struct media_pad *local,
+			const struct media_pad *remote, u32 flags)
 {
 	struct v4l2_subdev *sd = media_entity_to_v4l2_subdev(entity);
 	struct isp_ccp2_device *ccp2 = v4l2_get_subdevdata(sd);
 
-	switch (local->index | (remote->entity->type << 16)) {
-	case CCP2_PAD_SINK | (MEDIA_ENTITY_TYPE_NODE << 16):
+	switch (local->index | media_entity_type(remote->entity)) {
+	case CCP2_PAD_SINK | MEDIA_ENTITY_TYPE_NODE:
 		/* read from memory */
 		if (flags & MEDIA_LINK_FLAG_ACTIVE) {
 			if (ccp2->input == CCP2_INPUT_SENSOR)
@@ -914,7 +907,7 @@ static int ispccp2_link_setup(struct media_entity *entity,
 		}
 		break;
 
-	case CCP2_PAD_SINK | (MEDIA_ENTITY_TYPE_SUBDEV << 16):
+	case CCP2_PAD_SINK | MEDIA_ENTITY_TYPE_SUBDEV:
 		/* read from sensor/phy */
 		if (flags & MEDIA_LINK_FLAG_ACTIVE) {
 			if (ccp2->input == CCP2_INPUT_MEMORY)
@@ -925,7 +918,7 @@ static int ispccp2_link_setup(struct media_entity *entity,
 				ccp2->input = CCP2_INPUT_NONE;
 		} break;
 
-	case CCP2_PAD_SOURCE | (MEDIA_ENTITY_TYPE_SUBDEV << 16):
+	case CCP2_PAD_SOURCE | MEDIA_ENTITY_TYPE_SUBDEV:
 		/* write to video port/ccdc */
 		if (flags & MEDIA_LINK_FLAG_ACTIVE)
 			ccp2->output = CCP2_OUTPUT_CCDC;
@@ -953,7 +946,7 @@ static const struct media_entity_operations ccp2_media_ops = {
 static int isp_ccp2_init_entities(struct isp_ccp2_device *ccp2)
 {
 	struct v4l2_subdev *sd = &ccp2->subdev;
-	struct media_entity_pad *pads = ccp2->pads;
+	struct media_pad *pads = ccp2->pads;
 	struct media_entity *me = &sd->entity;
 	int ret;
 
@@ -966,8 +959,8 @@ static int isp_ccp2_init_entities(struct isp_ccp2_device *ccp2)
 	v4l2_set_subdevdata(sd, ccp2);
 	sd->flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
 
-	pads[CCP2_PAD_SINK].type = MEDIA_PAD_TYPE_INPUT;
-	pads[CCP2_PAD_SOURCE].type = MEDIA_PAD_TYPE_OUTPUT;
+	pads[CCP2_PAD_SINK].flags = MEDIA_PAD_FLAG_INPUT;
+	pads[CCP2_PAD_SOURCE].flags = MEDIA_PAD_FLAG_OUTPUT;
 
 	me->ops = &ccp2_media_ops;
 	ret = media_entity_init(me, CCP2_PADS_NUM, pads, 0);

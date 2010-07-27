@@ -170,7 +170,7 @@ struct ispccdc_lsc {
  */
 struct isp_ccdc_device {
 	struct v4l2_subdev subdev;
-	struct media_entity_pad pads[CCDC_PADS_NUM];
+	struct media_pad pads[CCDC_PADS_NUM];
 	struct v4l2_mbus_framefmt formats[CCDC_PADS_NUM];
 
 	enum ccdc_input_entity input;

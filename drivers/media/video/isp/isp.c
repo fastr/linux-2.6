@@ -574,8 +574,8 @@ static int isp_pipeline_enable(struct isp_pipeline *pipe,
 			       enum isp_pipeline_stream_state mode)
 {
 	struct isp_device *isp = pipe->output->isp;
-	struct media_entity_pad *pad;
 	struct media_entity *entity;
+	struct media_pad *pad;
 	struct v4l2_subdev *subdev;
 	unsigned long flags;
 	int ret = 0;
@@ -587,12 +587,12 @@ static int isp_pipeline_enable(struct isp_pipeline *pipe,
 	entity = &pipe->output->video.entity;
 	while (1) {
 		pad = &entity->pads[0];
-		if (pad->type != MEDIA_PAD_TYPE_INPUT)
+		if (!(pad->flags & MEDIA_PAD_FLAG_INPUT))
 			break;
 
-		pad = media_entity_remote_pad(pad);
+		pad = media_entity_remote_source(pad);
 		if (pad == NULL ||
-		    pad->entity->type != MEDIA_ENTITY_TYPE_SUBDEV)
+		    media_entity_type(pad->entity) != MEDIA_ENTITY_TYPE_SUBDEV)
 			break;
 
 		entity = pad->entity;
@@ -663,8 +663,8 @@ static int isp_pipeline_wait(struct isp_device *isp,
 static int isp_pipeline_disable(struct isp_pipeline *pipe)
 {
 	struct isp_device *isp = pipe->output->isp;
-	struct media_entity_pad *pad;
 	struct media_entity *entity;
+	struct media_pad *pad;
 	struct v4l2_subdev *subdev;
 	int failure = 0;
 	int ret;
@@ -676,12 +676,12 @@ static int isp_pipeline_disable(struct isp_pipeline *pipe)
 	entity = &pipe->output->video.entity;
 	while (1) {
 		pad = &entity->pads[0];
-		if (pad->type != MEDIA_PAD_TYPE_INPUT)
+		if (!(pad->flags & MEDIA_PAD_FLAG_INPUT))
 			break;
 
-		pad = media_entity_remote_pad(pad);
+		pad = media_entity_remote_source(pad);
 		if (pad == NULL ||
-		    pad->entity->type != MEDIA_ENTITY_TYPE_SUBDEV)
+		    media_entity_type(pad->entity) != MEDIA_ENTITY_TYPE_SUBDEV)
 			break;
 
 		entity = pad->entity;
@@ -781,14 +781,14 @@ static void isp_pipeline_suspend(struct isp_pipeline *pipe)
 static int isp_pipeline_is_last(struct media_entity *me)
 {
 	struct isp_pipeline *pipe;
-	struct media_entity_pad *pad;
+	struct media_pad *pad;
 
 	if (!me->pipe)
 		return 0;
 	pipe = to_isp_pipeline(me);
 	if (pipe->stream_state == ISP_PIPELINE_STREAM_STOPPED)
 		return 0;
-	pad = media_entity_remote_pad(&pipe->output->pad);
+	pad = media_entity_remote_source(&pipe->output->pad);
 	return pad->entity == me;
 }
 
@@ -1334,7 +1334,7 @@ static void isp_unregister_entities(struct isp_device *isp)
  */
 static struct v4l2_subdev *
 isp_register_subdev_group(struct isp_device *isp,
-		     struct v4l2_subdev_i2c_board_info *board_info)
+		     struct isp_subdev_i2c_board_info *board_info)
 {
 	struct v4l2_subdev *sensor = NULL;
 	unsigned int first;
@@ -1377,6 +1377,8 @@ static int isp_register_entities(struct isp_device *isp)
 	int ret;
 
 	isp->media_dev.dev = isp->dev;
+	strlcpy(isp->media_dev.model, "TI OMAP3 ISP",
+		sizeof(isp->media_dev.model));
 	ret = media_device_register(&isp->media_dev);
 	if (ret < 0) {
 		printk(KERN_ERR "%s: Media device registration failed (%d)\n",

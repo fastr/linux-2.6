@@ -38,7 +38,7 @@
 
 static struct v4l2_mbus_framefmt *
 __ccdc_get_format(struct isp_ccdc_device *ccdc, struct v4l2_subdev_fh *fh,
-		  unsigned int pad, enum v4l2_subdev_format which);
+		  unsigned int pad, enum v4l2_subdev_format_whence which);
 
 static const unsigned int ccdc_fmts[] = {
 	V4L2_MBUS_FMT_SGRBG10_1X10,
@@ -1051,16 +1051,16 @@ static void ccdc_configure(struct isp_ccdc_device *ccdc)
 {
 	struct isp_device *isp = to_isp_device(ccdc);
 	struct isp_parallel_platform_data *pdata = NULL;
-	struct media_entity_pad *pad;
 	struct v4l2_subdev *sensor;
 	struct v4l2_mbus_framefmt *format;
 	struct v4l2_pix_format pix;
+	struct media_pad *pad;
 	unsigned long flags;
 	u32 syn_mode;
 	u32 ccdc_pattern;
 
 	if (ccdc->input == CCDC_INPUT_PARALLEL) {
-		pad = media_entity_remote_pad(&ccdc->pads[CCDC_PAD_SINK]);
+		pad = media_entity_remote_source(&ccdc->pads[CCDC_PAD_SINK]);
 		sensor = media_entity_to_v4l2_subdev(pad->entity);
 		pdata = &((struct isp_v4l2_subdevs_group *)sensor->host_priv)
 			->bus.parallel;
@@ -1729,10 +1729,10 @@ static int ccdc_set_stream(struct v4l2_subdev *sd, int enable)
 
 static struct v4l2_mbus_framefmt *
 __ccdc_get_format(struct isp_ccdc_device *ccdc, struct v4l2_subdev_fh *fh,
-		  unsigned int pad, enum v4l2_subdev_format which)
+		  unsigned int pad, enum v4l2_subdev_format_whence which)
 {
-	if (which == V4L2_SUBDEV_FORMAT_PROBE)
-		return v4l2_subdev_get_probe_format(fh, pad);
+	if (which == V4L2_SUBDEV_FORMAT_TRY)
+		return v4l2_subdev_get_try_format(fh, pad);
 	else
 		return &ccdc->formats[pad];
 }
@@ -1747,7 +1747,7 @@ __ccdc_get_format(struct isp_ccdc_device *ccdc, struct v4l2_subdev_fh *fh,
 static void
 ccdc_try_format(struct isp_ccdc_device *ccdc, struct v4l2_subdev_fh *fh,
 		unsigned int pad, struct v4l2_mbus_framefmt *fmt,
-		enum v4l2_subdev_format which)
+		enum v4l2_subdev_format_whence which)
 {
 	struct v4l2_mbus_framefmt *format;
 	unsigned int width = fmt->width;
@@ -1811,12 +1811,12 @@ ccdc_try_format(struct isp_ccdc_device *ccdc, struct v4l2_subdev_fh *fh,
  * ccdc_enum_mbus_code - Handle pixel format enumeration
  * @sd     : pointer to v4l2 subdev structure
  * @fh : V4L2 subdev file handle
- * @code   : pointer to v4l2_subdev_pad_mbus_code_enum structure
+ * @code   : pointer to v4l2_subdev_mbus_code_enum structure
  * return -EINVAL or zero on success
  */
 static int ccdc_enum_mbus_code(struct v4l2_subdev *sd,
 			       struct v4l2_subdev_fh *fh,
-			       struct v4l2_subdev_pad_mbus_code_enum *code)
+			       struct v4l2_subdev_mbus_code_enum *code)
 {
 	struct isp_ccdc_device *ccdc = v4l2_get_subdevdata(sd);
 	struct v4l2_mbus_framefmt *format;
@@ -1836,7 +1836,7 @@ static int ccdc_enum_mbus_code(struct v4l2_subdev *sd,
 			return -EINVAL;
 
 		format = __ccdc_get_format(ccdc, fh, CCDC_PAD_SINK,
-					   V4L2_SUBDEV_FORMAT_PROBE);
+					   V4L2_SUBDEV_FORMAT_TRY);
 
 		code->code = format->code;
 		break;
@@ -1861,7 +1861,7 @@ static int ccdc_enum_frame_size(struct v4l2_subdev *sd,
 	format.code = fse->code;
 	format.width = 1;
 	format.height = 1;
-	ccdc_try_format(ccdc, fh, fse->pad, &format, V4L2_SUBDEV_FORMAT_PROBE);
+	ccdc_try_format(ccdc, fh, fse->pad, &format, V4L2_SUBDEV_FORMAT_TRY);
 	fse->min_width = format.width;
 	fse->min_height = format.height;
 
@@ -1871,7 +1871,7 @@ static int ccdc_enum_frame_size(struct v4l2_subdev *sd,
 	format.code = fse->code;
 	format.width = -1;
 	format.height = -1;
-	ccdc_try_format(ccdc, fh, fse->pad, &format, V4L2_SUBDEV_FORMAT_PROBE);
+	ccdc_try_format(ccdc, fh, fse->pad, &format, V4L2_SUBDEV_FORMAT_TRY);
 	fse->max_width = format.width;
 	fse->max_height = format.height;
 
@@ -1882,24 +1882,22 @@ static int ccdc_enum_frame_size(struct v4l2_subdev *sd,
  * ccdc_get_format - Retrieve the video format on a pad
  * @sd : ISP CCDC V4L2 subdevice
  * @fh : V4L2 subdev file handle
- * @pad: Pad number
  * @fmt: Format
  *
  * Return 0 on success or -EINVAL if the pad is invalid or doesn't correspond
  * to the format type.
  */
 static int ccdc_get_format(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
-			   unsigned int pad, struct v4l2_mbus_framefmt *fmt,
-			   enum v4l2_subdev_format which)
+			   struct v4l2_subdev_format *fmt)
 {
 	struct isp_ccdc_device *ccdc = v4l2_get_subdevdata(sd);
 	struct v4l2_mbus_framefmt *format;
 
-	format = __ccdc_get_format(ccdc, fh, pad, which);
+	format = __ccdc_get_format(ccdc, fh, fmt->pad, fmt->which);
 	if (format == NULL)
 		return -EINVAL;
 
-	memcpy(fmt, format, sizeof(*fmt));
+	fmt->format = *format;
 	return 0;
 }
 
@@ -1907,35 +1905,37 @@ static int ccdc_get_format(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
  * ccdc_set_format - Set the video format on a pad
  * @sd : ISP CCDC V4L2 subdevice
  * @fh : V4L2 subdev file handle
- * @pad: Pad number
  * @fmt: Format
  *
  * Return 0 on success or -EINVAL if the pad is invalid or doesn't correspond
  * to the format type.
  */
 static int ccdc_set_format(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
-			   unsigned int pad, struct v4l2_mbus_framefmt *fmt,
-			   enum v4l2_subdev_format which)
+			   struct v4l2_subdev_format *fmt)
 {
 	struct isp_ccdc_device *ccdc = v4l2_get_subdevdata(sd);
 	struct v4l2_mbus_framefmt *format;
 
-	format = __ccdc_get_format(ccdc, fh, pad, which);
+	format = __ccdc_get_format(ccdc, fh, fmt->pad, fmt->which);
 	if (format == NULL)
 		return -EINVAL;
 
-	ccdc_try_format(ccdc, fh, pad, fmt, which);
-	memcpy(format, fmt, sizeof(*format));
+	ccdc_try_format(ccdc, fh, fmt->pad, &fmt->format, fmt->which);
+	*format = fmt->format;
 
 	/* Propagate the format from sink to source */
-	if (pad == CCDC_PAD_SINK) {
-		format = __ccdc_get_format(ccdc, fh, CCDC_PAD_SOURCE_OF, which);
-		memcpy(format, fmt, sizeof(*format));
-		ccdc_try_format(ccdc, fh, CCDC_PAD_SOURCE_OF, format, which);
+	if (fmt->pad == CCDC_PAD_SINK) {
+		format = __ccdc_get_format(ccdc, fh, CCDC_PAD_SOURCE_OF,
+					   fmt->which);
+		*format = fmt->format;
+		ccdc_try_format(ccdc, fh, CCDC_PAD_SOURCE_OF, format,
+				fmt->which);
 
-		format = __ccdc_get_format(ccdc, fh, CCDC_PAD_SOURCE_VP, which);
-		memcpy(format, fmt, sizeof(*format));
-		ccdc_try_format(ccdc, fh, CCDC_PAD_SOURCE_VP, format, which);
+		format = __ccdc_get_format(ccdc, fh, CCDC_PAD_SOURCE_VP,
+					   fmt->which);
+		*format = fmt->format;
+		ccdc_try_format(ccdc, fh, CCDC_PAD_SOURCE_VP, format,
+				fmt->which);
 	}
 
 	return 0;
@@ -1985,15 +1985,15 @@ static const struct v4l2_subdev_ops ccdc_v4l2_ops = {
  * return -EINVAL or zero on success
  */
 static int ccdc_link_setup(struct media_entity *entity,
-			   const struct media_entity_pad *local,
-			   const struct media_entity_pad *remote, u32 flags)
+			   const struct media_pad *local,
+			   const struct media_pad *remote, u32 flags)
 {
 	struct v4l2_subdev *sd = media_entity_to_v4l2_subdev(entity);
 	struct isp_ccdc_device *ccdc = v4l2_get_subdevdata(sd);
 	struct isp_device *isp = to_isp_device(ccdc);
 
-	switch (local->index | (remote->entity->type << 16)) {
-	case CCDC_PAD_SINK | (MEDIA_ENTITY_TYPE_SUBDEV << 16):
+	switch (local->index | media_entity_type(remote->entity)) {
+	case CCDC_PAD_SINK | MEDIA_ENTITY_TYPE_SUBDEV:
 		/* Read from the sensor (parallel interface), CCP2, CSI2a or
 		 * CSI2c.
 		 */
@@ -2016,7 +2016,7 @@ static int ccdc_link_setup(struct media_entity *entity,
 
 		break;
 
-	case CCDC_PAD_SOURCE_VP | (MEDIA_ENTITY_TYPE_SUBDEV << 16):
+	case CCDC_PAD_SOURCE_VP | MEDIA_ENTITY_TYPE_SUBDEV:
 		/* Write to preview engine, histogram and H3A. When none of
 		 * those links are active, the video port can be disabled.
 		 */
@@ -2026,7 +2026,7 @@ static int ccdc_link_setup(struct media_entity *entity,
 			ccdc->output &= ~CCDC_OUTPUT_PREVIEW;
 		break;
 
-	case CCDC_PAD_SOURCE_OF | (MEDIA_ENTITY_TYPE_NODE << 16):
+	case CCDC_PAD_SOURCE_OF | MEDIA_ENTITY_TYPE_NODE:
 		/* Write to memory */
 		if (flags & MEDIA_LINK_FLAG_ACTIVE)
 			ccdc->output |= CCDC_OUTPUT_MEMORY;
@@ -2034,7 +2034,7 @@ static int ccdc_link_setup(struct media_entity *entity,
 			ccdc->output &= ~CCDC_OUTPUT_MEMORY;
 		break;
 
-	case CCDC_PAD_SOURCE_OF | (MEDIA_ENTITY_TYPE_SUBDEV << 16):
+	case CCDC_PAD_SOURCE_OF | MEDIA_ENTITY_TYPE_SUBDEV:
 		/* Write to resizer */
 		if (flags & MEDIA_LINK_FLAG_ACTIVE)
 			ccdc->output |= CCDC_OUTPUT_RESIZER;
@@ -2064,7 +2064,7 @@ static const struct media_entity_operations ccdc_media_ops = {
 static int isp_ccdc_init_entities(struct isp_ccdc_device *ccdc)
 {
 	struct v4l2_subdev *sd = &ccdc->subdev;
-	struct media_entity_pad *pads = ccdc->pads;
+	struct media_pad *pads = ccdc->pads;
 	struct media_entity *me = &sd->entity;
 	int ret;
 
@@ -2077,9 +2077,9 @@ static int isp_ccdc_init_entities(struct isp_ccdc_device *ccdc)
 	sd->flags |= V4L2_SUBDEV_FL_HAS_EVENTS | V4L2_SUBDEV_FL_HAS_DEVNODE;
 	sd->nevents = OMAP3ISP_CCDC_NEVENTS;
 
-	pads[CCDC_PAD_SINK].type = MEDIA_PAD_TYPE_INPUT;
-	pads[CCDC_PAD_SOURCE_VP].type = MEDIA_PAD_TYPE_OUTPUT;
-	pads[CCDC_PAD_SOURCE_OF].type = MEDIA_PAD_TYPE_OUTPUT;
+	pads[CCDC_PAD_SINK].flags = MEDIA_PAD_FLAG_INPUT;
+	pads[CCDC_PAD_SOURCE_VP].flags = MEDIA_PAD_FLAG_OUTPUT;
+	pads[CCDC_PAD_SOURCE_OF].flags = MEDIA_PAD_FLAG_OUTPUT;
 
 	me->ops = &ccdc_media_ops;
 	ret = media_entity_init(me, CCDC_PADS_NUM, pads, 0);

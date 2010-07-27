@@ -1001,7 +1001,7 @@ static int ispstat_init_entities(struct ispstat *stat, const char *name,
 	subdev->nevents = STAT_NEVENTS;
 	v4l2_set_subdevdata(subdev, stat);
 
-	stat->pad.type = MEDIA_PAD_TYPE_INPUT;
+	stat->pad.flags = MEDIA_PAD_FLAG_INPUT;
 	me->ops = NULL;
 
 	return media_entity_init(me, 1, &stat->pad, 0);

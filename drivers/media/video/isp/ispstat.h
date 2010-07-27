@@ -97,7 +97,7 @@ enum ispstat_state_t {
 
 struct ispstat {
 	struct v4l2_subdev subdev;
-	struct media_entity_pad pad;	/* sink pad */
+	struct media_pad pad;	/* sink pad */
 
 	/* Control */
 	unsigned configured:1;

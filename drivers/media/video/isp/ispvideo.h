@@ -113,7 +113,7 @@ struct isp_video_operations {
 struct isp_video {
 	struct video_device video;
 	enum v4l2_buf_type type;
-	struct media_entity_pad pad;
+	struct media_pad pad;
 
 	struct mutex mutex;
 	atomic_t active;
@@ -159,7 +159,7 @@ extern void isp_video_unregister(struct isp_video *video);
 extern struct isp_buffer *isp_video_buffer_next(struct isp_video *video,
 						unsigned int error);
 extern void isp_video_resume(struct isp_video *video, int discard);
-extern struct media_entity_pad *isp_video_remote_pad(struct isp_video *video);
+extern struct media_pad *isp_video_remote_pad(struct isp_video *video);
 extern void isp_video_mbus_to_pix(const struct isp_video *video,
 				  const struct v4l2_mbus_framefmt *mbus,
 				  struct v4l2_pix_format *pix);

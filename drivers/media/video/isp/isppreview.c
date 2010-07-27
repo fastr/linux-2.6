@@ -968,10 +968,10 @@ isppreview_config_ycpos(struct isp_prev_device *prev,
 	enum preview_ycpos_mode mode;
 
 	switch (pixelcode) {
-	case V4L2_MBUS_FMT_YUYV16_1X16:
+	case V4L2_MBUS_FMT_YUYV8_1X16:
 		mode = YCPOS_CrYCbY;
 		break;
-	case V4L2_MBUS_FMT_UYVY16_1X16:
+	case V4L2_MBUS_FMT_UYVY8_1X16:
 		mode = YCPOS_YCrYCb;
 		break;
 	default:
@@ -1689,10 +1689,10 @@ static int preview_set_stream(struct v4l2_subdev *sd, int enable)
 
 static struct v4l2_mbus_framefmt *
 __preview_get_format(struct isp_prev_device *prev, struct v4l2_subdev_fh *fh,
-		     unsigned int pad, enum v4l2_subdev_format which)
+		     unsigned int pad, enum v4l2_subdev_format_whence which)
 {
-	if (which == V4L2_SUBDEV_FORMAT_PROBE)
-		return v4l2_subdev_get_probe_format(fh, pad);
+	if (which == V4L2_SUBDEV_FORMAT_TRY)
+		return v4l2_subdev_get_try_format(fh, pad);
 	else
 		return &prev->formats[pad];
 }
@@ -1706,8 +1706,8 @@ static const unsigned int prev_input_fmts[] = {
 };
 
 static const unsigned int prev_output_fmts[] = {
-	V4L2_MBUS_FMT_UYVY16_1X16,
-	V4L2_MBUS_FMT_YUYV16_1X16,
+	V4L2_MBUS_FMT_UYVY8_1X16,
+	V4L2_MBUS_FMT_YUYV8_1X16,
 };
 
 /*
@@ -1720,7 +1720,7 @@ static const unsigned int prev_output_fmts[] = {
 static void preview_try_format(struct isp_prev_device *prev,
 			       struct v4l2_subdev_fh *fh, unsigned int pad,
 			       struct v4l2_mbus_framefmt *fmt,
-			       enum v4l2_subdev_format which)
+			       enum v4l2_subdev_format_whence which)
 {
 	struct v4l2_mbus_framefmt *format;
 	unsigned int max_out_width;
@@ -1771,13 +1771,13 @@ static void preview_try_format(struct isp_prev_device *prev,
 		 * possible value for simplicity reasons.
 		 */
 		switch (pixelcode) {
-		case V4L2_MBUS_FMT_YUYV16_1X16:
-		case V4L2_MBUS_FMT_UYVY16_1X16:
+		case V4L2_MBUS_FMT_YUYV8_1X16:
+		case V4L2_MBUS_FMT_UYVY8_1X16:
 			fmt->code = pixelcode;
 			break;
 
 		default:
-			fmt->code = V4L2_MBUS_FMT_YUYV16_1X16;
+			fmt->code = V4L2_MBUS_FMT_YUYV8_1X16;
 			break;
 		}
 
@@ -1826,12 +1826,12 @@ static void preview_try_format(struct isp_prev_device *prev,
  * preview_enum_mbus_code - Handle pixel format enumeration
  * @sd     : pointer to v4l2 subdev structure
  * @fh     : V4L2 subdev file handle
- * @code   : pointer to v4l2_subdev_pad_mbus_code_enum structure
+ * @code   : pointer to v4l2_subdev_mbus_code_enum structure
  * return -EINVAL or zero on success
  */
 static int preview_enum_mbus_code(struct v4l2_subdev *sd,
 				  struct v4l2_subdev_fh *fh,
-				  struct v4l2_subdev_pad_mbus_code_enum *code)
+				  struct v4l2_subdev_mbus_code_enum *code)
 {
 	switch (code->pad) {
 	case PREV_PAD_SINK:
@@ -1866,8 +1866,7 @@ static int preview_enum_frame_size(struct v4l2_subdev *sd,
 	format.code = fse->code;
 	format.width = 1;
 	format.height = 1;
-	preview_try_format(prev, fh, fse->pad, &format,
-			   V4L2_SUBDEV_FORMAT_PROBE);
+	preview_try_format(prev, fh, fse->pad, &format, V4L2_SUBDEV_FORMAT_TRY);
 	fse->min_width = format.width;
 	fse->min_height = format.height;
 
@@ -1877,8 +1876,7 @@ static int preview_enum_frame_size(struct v4l2_subdev *sd,
 	format.code = fse->code;
 	format.width = -1;
 	format.height = -1;
-	preview_try_format(prev, fh, fse->pad, &format,
-			   V4L2_SUBDEV_FORMAT_PROBE);
+	preview_try_format(prev, fh, fse->pad, &format, V4L2_SUBDEV_FORMAT_TRY);
 	fse->max_width = format.width;
 	fse->max_height = format.height;
 
@@ -1889,22 +1887,20 @@ static int preview_enum_frame_size(struct v4l2_subdev *sd,
  * preview_get_format - Handle get format by pads subdev method
  * @sd : pointer to v4l2 subdev structure
  * @fh : V4L2 subdev file handle
- * @pad: pad num
- * @fmt: pointer to v4l2 format structure
+ * @fmt: pointer to v4l2 subdev format structure
  * return -EINVAL or zero on sucess
  */
 static int preview_get_format(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
-			      unsigned int pad, struct v4l2_mbus_framefmt *fmt,
-			      enum v4l2_subdev_format which)
+			      struct v4l2_subdev_format *fmt)
 {
 	struct isp_prev_device *prev = v4l2_get_subdevdata(sd);
 	struct v4l2_mbus_framefmt *format;
 
-	format = __preview_get_format(prev, fh, pad, which);
+	format = __preview_get_format(prev, fh, fmt->pad, fmt->which);
 	if (format == NULL)
 		return -EINVAL;
 
-	memcpy(fmt, format, sizeof(*fmt));
+	fmt->format = *format;
 	return 0;
 }
 
@@ -1912,29 +1908,29 @@ static int preview_get_format(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
  * preview_set_format - Handle set format by pads subdev method
  * @sd : pointer to v4l2 subdev structure
  * @fh : V4L2 subdev file handle
- * @pad: pad num
- * @fmt: pointer to v4l2 format structure
+ * @fmt: pointer to v4l2 subdev format structure
  * return -EINVAL or zero on success
  */
 static int preview_set_format(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
-			      unsigned int pad, struct v4l2_mbus_framefmt *fmt,
-			      enum v4l2_subdev_format which)
+			      struct v4l2_subdev_format *fmt)
 {
 	struct isp_prev_device *prev = v4l2_get_subdevdata(sd);
 	struct v4l2_mbus_framefmt *format;
 
-	format = __preview_get_format(prev, fh, pad, which);
+	format = __preview_get_format(prev, fh, fmt->pad, fmt->which);
 	if (format == NULL)
 		return -EINVAL;
 
-	preview_try_format(prev, fh, pad, fmt, which);
-	memcpy(format, fmt, sizeof(*format));
+	preview_try_format(prev, fh, fmt->pad, &fmt->format, fmt->which);
+	*format = fmt->format;
 
 	/* Propagate the format from sink to source */
-	if (pad == PREV_PAD_SINK) {
-		format = __preview_get_format(prev, fh, PREV_PAD_SOURCE, which);
-		memcpy(format, fmt, sizeof(*format));
-		preview_try_format(prev, fh, PREV_PAD_SOURCE, format, which);
+	if (fmt->pad == PREV_PAD_SINK) {
+		format = __preview_get_format(prev, fh, PREV_PAD_SOURCE,
+					      fmt->which);
+		*format = fmt->format;
+		preview_try_format(prev, fh, PREV_PAD_SOURCE, format,
+				   fmt->which);
 	}
 
 	return 0;
@@ -1982,14 +1978,14 @@ static const struct v4l2_subdev_ops preview_v4l2_ops = {
  * return -EINVAL or zero on success
  */
 static int preview_link_setup(struct media_entity *entity,
-			      const struct media_entity_pad *local,
-			      const struct media_entity_pad *remote, u32 flags)
+			      const struct media_pad *local,
+			      const struct media_pad *remote, u32 flags)
 {
 	struct v4l2_subdev *sd = media_entity_to_v4l2_subdev(entity);
 	struct isp_prev_device *prev = v4l2_get_subdevdata(sd);
 
-	switch (local->index | (remote->entity->type << 16)) {
-	case PREV_PAD_SINK | (MEDIA_ENTITY_TYPE_NODE << 16):
+	switch (local->index | media_entity_type(remote->entity)) {
+	case PREV_PAD_SINK | MEDIA_ENTITY_TYPE_NODE:
 		/* read from memory */
 		if (flags & MEDIA_LINK_FLAG_ACTIVE) {
 			if (prev->input == PREVIEW_INPUT_CCDC)
@@ -2001,7 +1997,7 @@ static int preview_link_setup(struct media_entity *entity,
 		}
 		break;
 
-	case PREV_PAD_SINK | (MEDIA_ENTITY_TYPE_SUBDEV << 16):
+	case PREV_PAD_SINK | MEDIA_ENTITY_TYPE_SUBDEV:
 		/* read from ccdc */
 		if (flags & MEDIA_LINK_FLAG_ACTIVE) {
 			if (prev->input == PREVIEW_INPUT_MEMORY)
@@ -2013,7 +2009,7 @@ static int preview_link_setup(struct media_entity *entity,
 		}
 		break;
 
-	case PREV_PAD_SOURCE | (MEDIA_ENTITY_TYPE_NODE << 16):
+	case PREV_PAD_SOURCE | MEDIA_ENTITY_TYPE_NODE:
 		/* write to memory */
 		if (flags & MEDIA_LINK_FLAG_ACTIVE)
 			prev->output |= PREVIEW_OUTPUT_MEMORY;
@@ -2021,7 +2017,7 @@ static int preview_link_setup(struct media_entity *entity,
 			prev->output &= ~PREVIEW_OUTPUT_MEMORY;
 		break;
 
-	case PREV_PAD_SOURCE | (MEDIA_ENTITY_TYPE_SUBDEV << 16):
+	case PREV_PAD_SOURCE | MEDIA_ENTITY_TYPE_SUBDEV:
 		/* write to resizer */
 		if (flags & MEDIA_LINK_FLAG_ACTIVE)
 			prev->output |= PREVIEW_OUTPUT_RESIZER;
@@ -2050,7 +2046,7 @@ static const struct media_entity_operations preview_media_ops = {
 static int isppreview_init_entities(struct isp_prev_device *prev)
 {
 	struct v4l2_subdev *sd = &prev->subdev;
-	struct media_entity_pad *pads = prev->pads;
+	struct media_pad *pads = prev->pads;
 	struct media_entity *me = &sd->entity;
 	int ret;
 
@@ -2062,8 +2058,8 @@ static int isppreview_init_entities(struct isp_prev_device *prev)
 	v4l2_set_subdevdata(sd, prev);
 	sd->flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
 
-	pads[PREV_PAD_SINK].type = MEDIA_PAD_TYPE_INPUT;
-	pads[PREV_PAD_SOURCE].type = MEDIA_PAD_TYPE_OUTPUT;
+	pads[PREV_PAD_SINK].flags = MEDIA_PAD_FLAG_INPUT;
+	pads[PREV_PAD_SOURCE].flags = MEDIA_PAD_FLAG_OUTPUT;
 
 	me->ops = &preview_media_ops;
 	ret = media_entity_init(me, PREV_PADS_NUM, pads, 0);

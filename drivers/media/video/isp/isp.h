@@ -169,8 +169,13 @@ struct isp_csi2_platform_data {
 	unsigned vpclk_div:2;
 };
 
+struct isp_subdev_i2c_board_info {
+	struct i2c_board_info *board_info;
+	int i2c_adapter_id;
+};
+
 struct isp_v4l2_subdevs_group {
-	struct v4l2_subdev_i2c_board_info *subdevs;
+	struct isp_subdev_i2c_board_info *subdevs;
 	enum isp_interface_type interface;
 	union {
 		struct isp_parallel_platform_data parallel;
@@ -380,7 +385,7 @@ isp_pad_buffer_type(const struct v4l2_subdev *subdev, int pad)
 	if (pad >= subdev->entity.num_pads)
 		return 0;
 
-	if (subdev->entity.pads[pad].type == MEDIA_PAD_TYPE_INPUT)
+	if (subdev->entity.pads[pad].flags & MEDIA_PAD_FLAG_INPUT)
 		return V4L2_BUF_TYPE_VIDEO_OUTPUT;
 	else
 		return V4L2_BUF_TYPE_VIDEO_CAPTURE;

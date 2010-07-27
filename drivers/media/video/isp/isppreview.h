@@ -172,7 +172,7 @@ struct isptables_update {
  */
 struct isp_prev_device {
 	struct v4l2_subdev subdev;
-	struct media_entity_pad pads[PREV_PADS_NUM];
+	struct media_pad pads[PREV_PADS_NUM];
 	struct v4l2_mbus_framefmt formats[PREV_PADS_NUM];
 
 	enum preview_input_entity input;

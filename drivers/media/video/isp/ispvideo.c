@@ -48,11 +48,12 @@
 static struct v4l2_subdev *
 isp_video_remote_subdev(struct isp_video *video, u32 *pad)
 {
-	struct media_entity_pad *remote;
+	struct media_pad *remote;
 
-	remote = media_entity_remote_pad(&video->pad);
+	remote = media_entity_remote_source(&video->pad);
 
-	if (remote == NULL || remote->entity->type != MEDIA_ENTITY_TYPE_SUBDEV)
+	if (remote == NULL ||
+	    media_entity_type(remote->entity) != MEDIA_ENTITY_TYPE_SUBDEV)
 		return NULL;
 
 	if (pad)
@@ -77,7 +78,7 @@ isp_video_far_end(struct isp_video *video)
 		if (entity == &video->video.entity)
 			continue;
 
-		if (entity->type != MEDIA_ENTITY_TYPE_NODE)
+		if (media_entity_type(entity) != MEDIA_ENTITY_TYPE_NODE)
 			continue;
 
 		far_end = to_isp_video(media_entity_to_video_device(entity));
@@ -104,9 +105,9 @@ isp_video_far_end(struct isp_video *video)
 static int isp_video_validate_pipeline(struct isp_pipeline *pipe)
 {
 	struct isp_device *isp = pipe->output->isp;
-	struct v4l2_mbus_framefmt fmt_source;
-	struct v4l2_mbus_framefmt fmt_sink;
-	struct media_entity_pad *pad;
+	struct v4l2_subdev_format fmt_source;
+	struct v4l2_subdev_format fmt_sink;
+	struct media_pad *pad;
 	struct v4l2_subdev *subdev;
 	int ret;
 
@@ -119,11 +120,12 @@ static int isp_video_validate_pipeline(struct isp_pipeline *pipe)
 	while (1) {
 		/* Retrieve the sink format */
 		pad = &subdev->entity.pads[0];
-		if (pad->type != MEDIA_PAD_TYPE_INPUT)
+		if (!(pad->flags & MEDIA_PAD_FLAG_INPUT))
 			break;
 
-		ret = v4l2_subdev_call(subdev, pad, get_fmt, NULL, pad->index,
-				       &fmt_sink, V4L2_SUBDEV_FORMAT_ACTIVE);
+		fmt_sink.pad = pad->index;
+		fmt_sink.which = V4L2_SUBDEV_FORMAT_ACTIVE;
+		ret = v4l2_subdev_call(subdev, pad, get_fmt, NULL, &fmt_sink);
 		if (ret < 0 && ret != -ENOIOCTLCMD)
 			return -EPIPE;
 
@@ -132,22 +134,23 @@ static int isp_video_validate_pipeline(struct isp_pipeline *pipe)
 			ispresizer_max_rate(&isp->isp_res, &pipe->max_rate);
 
 		/* Retrieve the source format */
-		pad = media_entity_remote_pad(pad);
+		pad = media_entity_remote_source(pad);
 		if (pad == NULL ||
-		    pad->entity->type != MEDIA_ENTITY_TYPE_SUBDEV)
+		    media_entity_type(pad->entity) != MEDIA_ENTITY_TYPE_SUBDEV)
 			break;
 
 		subdev = media_entity_to_v4l2_subdev(pad->entity);
 
-		ret = v4l2_subdev_call(subdev, pad, get_fmt, NULL, pad->index,
-				       &fmt_source, V4L2_SUBDEV_FORMAT_ACTIVE);
+		fmt_source.pad = pad->index;
+		fmt_source.which = V4L2_SUBDEV_FORMAT_ACTIVE;
+		ret = v4l2_subdev_call(subdev, pad, get_fmt, NULL, &fmt_source);
 		if (ret < 0 && ret != -ENOIOCTLCMD)
 			return -EPIPE;
 
 		/* Check if the two ends match */
-		if (fmt_source.code != fmt_sink.code ||
-		    fmt_source.width != fmt_sink.width ||
-		    fmt_source.height != fmt_sink.height)
+		if (fmt_source.format.code != fmt_sink.format.code ||
+		    fmt_source.format.width != fmt_sink.format.width ||
+		    fmt_source.format.height != fmt_sink.format.height)
 			return -EPIPE;
 	}
 
@@ -157,7 +160,7 @@ static int isp_video_validate_pipeline(struct isp_pipeline *pipe)
 static int
 __isp_video_get_format(struct isp_video *video, struct v4l2_format *format)
 {
-	struct v4l2_mbus_framefmt fmt;
+	struct v4l2_subdev_format fmt;
 	struct v4l2_subdev *subdev;
 	u32 pad;
 	int ret;
@@ -167,8 +170,10 @@ __isp_video_get_format(struct isp_video *video, struct v4l2_format *format)
 		return -EINVAL;
 
 	mutex_lock(&video->mutex);
-	ret = v4l2_subdev_call(subdev, pad, get_fmt, NULL, pad, &fmt,
-			       V4L2_SUBDEV_FORMAT_ACTIVE);
+
+	fmt.pad = pad;
+	fmt.which = V4L2_SUBDEV_FORMAT_ACTIVE;
+	ret = v4l2_subdev_call(subdev, pad, get_fmt, NULL, &fmt);
 	if (ret == -ENOIOCTLCMD)
 		ret = -EINVAL;
 
@@ -178,7 +183,7 @@ __isp_video_get_format(struct isp_video *video, struct v4l2_format *format)
 		return ret;
 
 	format->type = video->type;
-	isp_video_mbus_to_pix(video, &fmt, &format->fmt.pix);
+	isp_video_mbus_to_pix(video, &fmt.format, &format->fmt.pix);
 	return 0;
 }
 
@@ -219,11 +224,11 @@ void isp_video_mbus_to_pix(const struct isp_video *video,
 		pix->pixelformat = V4L2_PIX_FMT_SGRBG10DPCM8;
 		pix->bytesperline = pix->width;
 		break;
-	case V4L2_MBUS_FMT_YUYV16_1X16:
+	case V4L2_MBUS_FMT_YUYV8_1X16:
 		pix->pixelformat = V4L2_PIX_FMT_YUYV;
 		pix->bytesperline = pix->width * 2;
 		break;
-	case V4L2_MBUS_FMT_UYVY16_1X16:
+	case V4L2_MBUS_FMT_UYVY8_1X16:
 	default:
 		pix->pixelformat = V4L2_PIX_FMT_UYVY;
 		pix->bytesperline = pix->width * 2;
@@ -254,11 +259,11 @@ void isp_video_pix_to_mbus(const struct v4l2_pix_format *pix,
 		mbus->code = V4L2_MBUS_FMT_SGRBG10_DPCM8_1X8;
 		break;
 	case V4L2_PIX_FMT_YUYV:
-		mbus->code = V4L2_MBUS_FMT_YUYV16_1X16;
+		mbus->code = V4L2_MBUS_FMT_YUYV8_1X16;
 		break;
 	case V4L2_PIX_FMT_UYVY:
 	default:
-		mbus->code = V4L2_MBUS_FMT_UYVY16_1X16;
+		mbus->code = V4L2_MBUS_FMT_UYVY8_1X16;
 		break;
 	}
 
@@ -600,7 +605,7 @@ static int
 isp_video_try_format(struct file *file, void *fh, struct v4l2_format *format)
 {
 	struct isp_video *video = video_drvdata(file);
-	struct v4l2_mbus_framefmt fmt;
+	struct v4l2_subdev_format fmt;
 	struct v4l2_subdev *subdev;
 	u32 pad;
 	int ret;
@@ -612,14 +617,15 @@ isp_video_try_format(struct file *file, void *fh, struct v4l2_format *format)
 	if (subdev == NULL)
 		return -EINVAL;
 
-	isp_video_pix_to_mbus(&format->fmt.pix, &fmt);
+	isp_video_pix_to_mbus(&format->fmt.pix, &fmt.format);
 
-	ret = v4l2_subdev_call(subdev, pad, get_fmt, NULL, pad, &fmt,
-			       V4L2_SUBDEV_FORMAT_ACTIVE);
+	fmt.pad = pad;
+	fmt.which = V4L2_SUBDEV_FORMAT_ACTIVE;
+	ret = v4l2_subdev_call(subdev, pad, get_fmt, NULL, &fmt);
 	if (ret)
 		return ret == -ENOIOCTLCMD ? -EINVAL : ret;
 
-	isp_video_mbus_to_pix(video, &fmt, &format->fmt.pix);
+	isp_video_mbus_to_pix(video, &fmt.format, &format->fmt.pix);
 	return 0;
 }
 
@@ -645,8 +651,8 @@ static int
 isp_video_get_crop(struct file *file, void *fh, struct v4l2_crop *crop)
 {
 	struct isp_video *video = video_drvdata(file);
+	struct v4l2_subdev_format format;
 	struct v4l2_subdev *subdev;
-	struct v4l2_mbus_framefmt format;
 	u32 pad;
 	int ret;
 
@@ -661,15 +667,16 @@ isp_video_get_crop(struct file *file, void *fh, struct v4l2_crop *crop)
 	if (ret != -ENOIOCTLCMD)
 		return ret;
 
-	ret = v4l2_subdev_call(subdev, pad, get_fmt, NULL, pad, &format,
-			       V4L2_SUBDEV_FORMAT_ACTIVE);
+	format.pad = pad;
+	format.which = V4L2_SUBDEV_FORMAT_ACTIVE;
+	ret = v4l2_subdev_call(subdev, pad, get_fmt, NULL, &format);
 	if (ret < 0)
 		return ret == -ENOIOCTLCMD ? -EINVAL : ret;
 
 	crop->c.left = 0;
 	crop->c.top = 0;
-	crop->c.width = format.width;
-	crop->c.height = format.height;
+	crop->c.width = format.format.width;
+	crop->c.height = format.format.height;
 
 	return 0;
 }
@@ -1116,11 +1123,11 @@ int isp_video_init(struct isp_video *video, const char *name)
 	switch (video->type) {
 	case V4L2_BUF_TYPE_VIDEO_CAPTURE:
 		direction = "output";
-		video->pad.type = MEDIA_PAD_TYPE_INPUT;
+		video->pad.flags = MEDIA_PAD_FLAG_INPUT;
 		break;
 	case V4L2_BUF_TYPE_VIDEO_OUTPUT:
 		direction = "input";
-		video->pad.type = MEDIA_PAD_TYPE_OUTPUT;
+		video->pad.flags = MEDIA_PAD_FLAG_OUTPUT;
 		break;
 
 	default:

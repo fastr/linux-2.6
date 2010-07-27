@@ -99,7 +99,7 @@ enum resizer_input_entity {
  */
 struct isp_res_device {
 	struct v4l2_subdev subdev;
-	struct media_entity_pad pads[RESZ_PADS_NUM];
+	struct media_pad pads[RESZ_PADS_NUM];
 	struct v4l2_mbus_framefmt formats[RESZ_PADS_NUM];
 
 	enum resizer_input_entity input;
