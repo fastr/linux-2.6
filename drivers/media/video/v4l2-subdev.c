@@ -303,7 +303,8 @@ void v4l2_subdev_init(struct v4l2_subdev *sd, const struct v4l2_subdev_ops *ops)
 	sd->flags = 0;
 	sd->name[0] = '\0';
 	sd->grp_id = 0;
-	sd->priv = NULL;
+	sd->dev_priv = NULL;
+	sd->host_priv = NULL;
 	sd->initialized = 1;
 	sd->entity.name = sd->name;
 	sd->entity.type = MEDIA_ENTITY_TYPE_SUBDEV;
