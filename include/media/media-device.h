@@ -75,6 +75,9 @@ struct media_device {
 	struct mutex graph_mutex;
 };
 
+/* media_devnode to media_device */
+#define to_media_device(node) container_of(node, struct media_device, devnode)
+
 int __must_check media_device_register(struct media_device *mdev);
 void media_device_unregister(struct media_device *mdev);
 

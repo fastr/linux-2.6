@@ -45,3 +45,13 @@
   on the same entity or on different entities. Data flows from a source pad to a
   sink pad.</para>
 </section>
+
+<section id="media-user-func">
+  <title>Function Reference</title>
+  <!-- Keep this alphabetically sorted. -->
+  &sub-media-open;
+  &sub-media-close;
+  &sub-media-ioctl;
+  <!-- All ioctls go here. -->
+  &sub-media-ioc-device-info;
+</section>
