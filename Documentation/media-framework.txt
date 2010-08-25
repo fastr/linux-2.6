@@ -343,3 +343,38 @@ and sink entities.
 In other words, activating or deactivating a link propagates reference count
 changes through the graph, and the final state is identical to what it would
 have been if the link had been active or inactive from the start.
+
+
+Entity locking and pipelines
+----------------------------
+
+When starting streaming, drivers must lock all entities in the graph to
+prevent link states from being modified during streaming by calling
+
+	media_entity_graph_lock(struct media_entity *entity,
+				struct media_pipeline *pipe);
+
+The function will lock all entities connected to the given entity through
+active links, either directly or indirectly.
+
+The media_pipeline instance pointed to by the pipe argument will be stored in
+every entity in the graph. Drivers should embed the media_pipeline structure
+in higher-level pipeline structures and can then access the pipeline through
+the media_entity pipe field.
+
+Calls to media_entity_graph_lock() can be nested. The pipeline pointer must be
+identical for all nested calls to the function.
+
+When stopping the stream, drivers must unlock the entities with
+
+	media_entity_graph_unlock(struct media_entity *entity);
+
+If multiple calls to media_entity_graph_lock() have been made the same number
+of media_entity_graph_unlock() calls are required to unlock the graph. The
+media_entity pipe field is reset to NULL on the last nested unlock call.
+
+Link configuration will fail with -EBUSY if either end of the link is a
+locked entity. If other operations need to be disallowed on locked entities
+(such as changing entities configuration parameters) drivers can explictly
+check the media_entity lock_count field to find out if an entity is locked.
+This operation must be done with the media_device graph_mutex held.

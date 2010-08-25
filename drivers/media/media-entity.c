@@ -196,6 +196,67 @@ media_entity_graph_walk_next(struct media_entity_graph *graph)
 }
 EXPORT_SYMBOL_GPL(media_entity_graph_walk_next);
 
+/**
+ * media_entity_graph_lock - Lock all entities in a graph
+ * @entity: Starting entity
+ * @pipe: Media pipeline to be assigned to all entities in the graph.
+ *
+ * Lock all entities connected to a given entity through active links, either
+ * directly or indirectly. The given pipeline is assigned to every entity in
+ * the graph and stored in the media_entity pipe field.
+ *
+ * Calls to this function can be nested, in which case the same number of
+ * media_entity_graph_unlock() calls will be required to unlock the graph. The
+ * pipeline pointer must be identical for all nested calls to
+ * media_entity_graph_lock().
+ */
+void media_entity_graph_lock(struct media_entity *entity,
+			     struct media_pipeline *pipe)
+{
+	struct media_device *mdev = entity->parent;
+	struct media_entity_graph graph;
+
+	mutex_lock(&mdev->graph_mutex);
+
+	media_entity_graph_walk_start(&graph, entity);
+
+	while ((entity = media_entity_graph_walk_next(&graph))) {
+		entity->lock_count++;
+		WARN_ON(entity->pipe && entity->pipe != pipe);
+		entity->pipe = pipe;
+	}
+
+	mutex_unlock(&mdev->graph_mutex);
+}
+EXPORT_SYMBOL_GPL(media_entity_graph_lock);
+
+/**
+ * media_entity_graph_unlock - Unlock all entities in a graph
+ * @entity: Starting entity
+ *
+ * Unlock all entities connected to a given entity through active links, either
+ * directly or indirectly. The media_entity pipe field is reset to NULL on the
+ * last nested unlock call.
+ */
+void media_entity_graph_unlock(struct media_entity *entity)
+{
+	struct media_device *mdev = entity->parent;
+	struct media_entity_graph graph;
+
+	mutex_lock(&mdev->graph_mutex);
+
+	media_entity_graph_walk_start(&graph, entity);
+
+	while ((entity = media_entity_graph_walk_next(&graph))) {
+		entity->lock_count--;
+		if (entity->lock_count == 0)
+			entity->pipe = NULL;
+	}
+
+	mutex_unlock(&mdev->graph_mutex);
+}
+EXPORT_SYMBOL_GPL(media_entity_graph_unlock);
+
 /* -----------------------------------------------------------------------------
  * Power state handling
  */
@@ -504,6 +565,9 @@ int __media_entity_setup_link(struct media_link *link, u32 flags)
 
 	if (link->flags == flags)
 		return 0;
+
+	if (link->source->entity->lock_count || link->sink->entity->lock_count)
+		return -EBUSY;
 
 	source = __media_entity_get(link->source->entity);
 	if (!source)
