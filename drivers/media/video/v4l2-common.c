@@ -368,8 +368,8 @@ EXPORT_SYMBOL_GPL(v4l2_i2c_subdev_init);
 
 /* Load an i2c sub-device. */
 struct v4l2_subdev *v4l2_i2c_new_subdev_board(struct v4l2_device *v4l2_dev,
-		struct i2c_adapter *adapter, const char *module_name,
-		struct i2c_board_info *info, const unsigned short *probe_addrs,
+		struct i2c_adapter *adapter, struct i2c_board_info *info,
+		const unsigned short *probe_addrs,
 		int enable_devnode)
 {
 	struct v4l2_subdev *sd = NULL;
@@ -377,10 +377,7 @@ struct v4l2_subdev *v4l2_i2c_new_subdev_board(struct v4l2_device *v4l2_dev,
 
 	BUG_ON(!v4l2_dev);
 
-	if (module_name)
-		request_module(module_name);
-	else
-		request_module(I2C_MODULE_PREFIX "%s", info->type);
+	request_module(I2C_MODULE_PREFIX "%s", info->type);
 
 	/* Create the i2c client */
 	if (info->addr == 0 && probe_addrs)
@@ -438,8 +435,7 @@ error:
 EXPORT_SYMBOL_GPL(v4l2_i2c_new_subdev_board);
 
 struct v4l2_subdev *v4l2_i2c_new_subdev(struct v4l2_device *v4l2_dev,
-		struct i2c_adapter *adapter,
-		const char *module_name, const char *client_type,
+		struct i2c_adapter *adapter, const char *client_type,
 		u8 addr, const unsigned short *probe_addrs)
 {
 	struct i2c_board_info info;
@@ -450,7 +446,7 @@ struct v4l2_subdev *v4l2_i2c_new_subdev(struct v4l2_device *v4l2_dev,
 	strlcpy(info.type, client_type, sizeof(info.type));
 	info.addr = addr;
 
-	return v4l2_i2c_new_subdev_board(v4l2_dev, adapter, module_name,
+	return v4l2_i2c_new_subdev_board(v4l2_dev, adapter,
 			&info, probe_addrs, 0);
 }
 EXPORT_SYMBOL_GPL(v4l2_i2c_new_subdev);
