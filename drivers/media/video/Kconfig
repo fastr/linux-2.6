@@ -301,6 +301,19 @@ config VIDEO_BT866
 	  To compile this driver as a module, choose M here: the
 	  module will be called bt866.
 
+config VIDEO_FSR172X
+	tristate "FSR172x support"
+	depends on I2C && VIDEO_V4L2
+	---help---
+	  Support for FSR172x data acquisition system.
+
+	  The FSR172x is a high speed ADC system that generates 12 bits data and
+	  fake synchronization signals. It looks to the host like a 12 bit raw
+	  sensor outputting a fixed 2048x128 resolution.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called fsr172x.
+
 config VIDEO_KS0127
 	tristate "KS0127 video decoder"
 	depends on VIDEO_V4L2 && I2C
