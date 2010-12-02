@@ -46,9 +46,15 @@
 #include <plat/nand.h>
 #include <plat/usb.h>
 
+#include <media/fsr172x.h>
+
+#include "devices.h"
 #include "mux.h"
 #include "sdram-micron-mt46h32m32lf-6.h"
 #include "hsmmc.h"
+
+#include "../../../drivers/media/video/isp/isp.h"
+#include "../../../drivers/media/video/isp/ispreg.h"
 
 #define OVERO_GPIO_BT_XGATE	15
 #define OVERO_GPIO_W2W_NRESET	16
@@ -231,6 +237,57 @@ static inline void __init overo_init_smsc911x(void)
 #else
 static inline void __init overo_init_smsc911x(void) { return; }
 #endif
+
+/* -----------------------------------------------------------------------------
+ * OMAP3 ISP
+ */
+
+#define FSR172X_GPIO_STREAM		23
+
+/* The FSR172x is a fake I2C device, these values don't matter much. */
+#define FSR172X_I2C_ADDR		0x10
+#define FSR172X_I2C_BUS_NUM		3
+
+static struct fsr172x_platform_data overo_fsr172x_platform_data = {
+	.gpio = FSR172X_GPIO_STREAM,
+};
+
+static struct i2c_board_info overo_camera_i2c_device = {
+	I2C_BOARD_INFO("fsr172x", FSR172X_I2C_ADDR),
+	.platform_data = &overo_fsr172x_platform_data,
+};
+
+static struct isp_subdev_i2c_board_info overo_camera_subdevs[] = {
+        {
+		.board_info = &overo_camera_i2c_device,
+		.i2c_adapter_id = FSR172X_I2C_BUS_NUM,
+        },
+        { NULL, 0 },
+};
+
+static struct isp_v4l2_subdevs_group overo_camera_subdev_groups[] = {
+	{
+		.subdevs = overo_camera_subdevs,
+		.interface = ISP_INTERFACE_PARALLEL,
+		.bus = { .parallel = {
+			.width			= 12,
+			.data_lane_shift	= 0,
+			.clk_pol		= 1,
+			.bridge			= ISPCTRL_PAR_BRIDGE_DISABLE,
+		} },
+	},
+	{ NULL, 0, },
+};
+
+static struct isp_platform_data overo_isp_platform_data = {
+	.subdevs = overo_camera_subdev_groups,
+};
+
+static int __init overo_camera_init(void)
+{
+	omap3isp_device.dev.platform_data = &overo_isp_platform_data;
+	return platform_device_register(&omap3isp_device);
+}
 
 static struct mtd_partition overo_nand_partitions[] = {
 	{
@@ -458,6 +515,7 @@ static void __init overo_init(void)
 	usb_ehci_init(&ehci_pdata);
 	overo_ads7846_init();
 	overo_init_smsc911x();
+	overo_camera_init();
 
 	/* Ensure SDRC pins are mux'd for self-refresh */
 	omap_mux_init_signal("sdrc_cke0", OMAP_PIN_OUTPUT);
