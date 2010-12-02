@@ -45,6 +45,10 @@ static const unsigned int ccdc_fmts[] = {
 	V4L2_MBUS_FMT_SRGGB10_1X10,
 	V4L2_MBUS_FMT_SBGGR10_1X10,
 	V4L2_MBUS_FMT_SGBRG10_1X10,
+	V4L2_MBUS_FMT_SGRBG12_1X12,
+	V4L2_MBUS_FMT_SRGGB12_1X12,
+	V4L2_MBUS_FMT_SBGGR12_1X12,
+	V4L2_MBUS_FMT_SGBRG12_1X12,
 };
 
 /*
@@ -1067,6 +1071,8 @@ static void ccdc_configure(struct isp_ccdc_device *ccdc)
 	}
 
 	isp_configure_bridge(isp, ccdc->input, pdata);
+
+	ccdc->syncif.datsz = pdata ? pdata->width : 10;
 	ispccdc_config_sync_if(ccdc, &ccdc->syncif);
 
 	syn_mode = isp_reg_readl(isp, OMAP3_ISP_IOMEM_CCDC, ISPCCDC_SYN_MODE);
@@ -1094,12 +1100,15 @@ static void ccdc_configure(struct isp_ccdc_device *ccdc)
 	/* Mosaic filter */
 	switch (format->code) {
 	case V4L2_MBUS_FMT_SRGGB10_1X10:
+	case V4L2_MBUS_FMT_SRGGB12_1X12:
 		ccdc_pattern = ccdc_srggb_pattern;
 		break;
 	case V4L2_MBUS_FMT_SBGGR10_1X10:
+	case V4L2_MBUS_FMT_SBGGR12_1X12:
 		ccdc_pattern = ccdc_sbggr_pattern;
 		break;
 	case V4L2_MBUS_FMT_SGBRG10_1X10:
+	case V4L2_MBUS_FMT_SGBRG12_1X12:
 		ccdc_pattern = ccdc_sgbrg_pattern;
 		break;
 	default:
@@ -1791,6 +1800,15 @@ ccdc_try_format(struct isp_ccdc_device *ccdc, struct v4l2_subdev_fh *fh,
 		format = __ccdc_get_format(ccdc, fh, CCDC_PAD_SINK, which);
 		memcpy(fmt, format, sizeof(*fmt));
 
+		/* The video port interface truncates the data to 10 bits. */
+		for (i = 0; i < ARRAY_SIZE(ccdc_fmts); ++i) {
+			if (fmt->code == ccdc_fmts[i]) {
+				if (i >= 4)
+					fmt->code = ccdc_fmts[i-4];
+				break;
+			}
+		}
+
 		/* The number of lines that can be clocked out from the video
 		 * port output must be at least one line less than the number
 		 * of input lines.
@@ -1800,8 +1818,8 @@ ccdc_try_format(struct isp_ccdc_device *ccdc, struct v4l2_subdev_fh *fh,
 		break;
 	}
 
-	/* Data is written to memory unpacked, each 10-bit pixel is stored on
-	 * 2 bytes.
+	/* Data is written to memory unpacked, each 10-bit or 12-bit pixel is
+	 * stored on 2 bytes.
 	 */
 	fmt->colorspace = V4L2_COLORSPACE_SRGB;
 	fmt->field = V4L2_FIELD_NONE;
@@ -2163,7 +2181,7 @@ int isp_ccdc_init(struct isp_device *isp)
 
 	ccdc->syncif.ccdc_mastermode = 0;
 	ccdc->syncif.datapol = 0;
-	ccdc->syncif.datsz = 10;
+	ccdc->syncif.datsz = 0;
 	ccdc->syncif.fldmode = 0;
 	ccdc->syncif.fldout = 0;
 	ccdc->syncif.fldpol = 0;
@@ -2172,7 +2190,7 @@ int isp_ccdc_init(struct isp_device *isp)
 	ccdc->syncif.vdpol = 0;
 
 	ccdc->clamp.oblen = 0;
-	ccdc->clamp.dcsubval = 64;
+	ccdc->clamp.dcsubval = 0;
 
 	ccdc->vpcfg.pixelclk = 0;
 

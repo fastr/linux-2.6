@@ -207,33 +207,56 @@ isp_video_check_format(struct isp_video *video, struct isp_video_fh *vfh)
 	return 0;
 }
 
+/*
+ * struct isp_format_descriptor - ISP pixel/media bus format information
+ * @code: V4L2 media bus format code
+ * @pixelformat: V4L2 pixel format FCC identifier
+ * @bpp: Bytes per pixel
+ * @uncompressed: V4L2 media bus format code for the corresponding uncompressed
+ * 	format. 0 for non-DPCM formats.
+ */
+struct isp_format_descriptor {
+	enum v4l2_mbus_pixelcode code;
+	u32 pixelformat;
+	unsigned int bpp;
+	enum v4l2_mbus_pixelcode uncompressed;
+};
+
+struct isp_format_descriptor formats[] = {
+	{ V4L2_MBUS_FMT_SBGGR10_1X10, V4L2_PIX_FMT_SBGGR10, 2, 0, },
+	{ V4L2_MBUS_FMT_SGBRG10_1X10, V4L2_PIX_FMT_SGBRG10, 2, 0, },
+	{ V4L2_MBUS_FMT_SGRBG10_1X10, V4L2_PIX_FMT_SGRBG10, 2, 0, },
+	{ V4L2_MBUS_FMT_SRGGB10_1X10, V4L2_PIX_FMT_SRGGB10, 2, 0, },
+	{ V4L2_MBUS_FMT_SGRBG10_DPCM8_1X8, V4L2_PIX_FMT_SGRBG10DPCM8, 1,
+		V4L2_MBUS_FMT_SGRBG10_1X10, },
+	{ V4L2_MBUS_FMT_SBGGR12_1X12, V4L2_PIX_FMT_SBGGR12, 2, 0, },
+	{ V4L2_MBUS_FMT_SGBRG12_1X12, V4L2_PIX_FMT_SGBRG12, 2, 0, },
+	{ V4L2_MBUS_FMT_SGRBG12_1X12, V4L2_PIX_FMT_SGRBG12, 2, 0, },
+	{ V4L2_MBUS_FMT_SRGGB12_1X12, V4L2_PIX_FMT_SRGGB12, 2, 0, },
+	{ V4L2_MBUS_FMT_UYVY8_1X16, V4L2_PIX_FMT_UYVY, 2, 0, },
+	{ V4L2_MBUS_FMT_YUYV8_1X16, V4L2_PIX_FMT_YUYV, 2, 0, },
+};
+
 void isp_video_mbus_to_pix(const struct isp_video *video,
 			   const struct v4l2_mbus_framefmt *mbus,
 			   struct v4l2_pix_format *pix)
 {
+	unsigned int i;
+
 	memset(pix, 0, sizeof(*pix));
 	pix->width = mbus->width;
 	pix->height = mbus->height;
 
-	switch (mbus->code) {
-	case V4L2_MBUS_FMT_SGRBG10_1X10:
-		pix->pixelformat = V4L2_PIX_FMT_SGRBG10;
-		pix->bytesperline = pix->width * 2;
-		break;
-	case V4L2_MBUS_FMT_SGRBG10_DPCM8_1X8:
-		pix->pixelformat = V4L2_PIX_FMT_SGRBG10DPCM8;
-		pix->bytesperline = pix->width;
-		break;
-	case V4L2_MBUS_FMT_YUYV8_1X16:
-		pix->pixelformat = V4L2_PIX_FMT_YUYV;
-		pix->bytesperline = pix->width * 2;
-		break;
-	case V4L2_MBUS_FMT_UYVY8_1X16:
-	default:
-		pix->pixelformat = V4L2_PIX_FMT_UYVY;
-		pix->bytesperline = pix->width * 2;
-		break;
+	for (i = 0; i < ARRAY_SIZE(formats); ++i) {
+		if (formats[i].code == mbus->code)
+			break;
 	}
+
+	if (WARN_ON(i == ARRAY_SIZE(formats)))
+		return;
+
+	pix->pixelformat = formats[i].pixelformat;
+	pix->bytesperline = pix->width * formats[i].bpp;
 
 	if (video->alignment)
 		pix->bytesperline = ALIGN(pix->bytesperline, video->alignment);
@@ -247,26 +270,21 @@ EXPORT_SYMBOL_GPL(isp_video_mbus_to_pix);
 void isp_video_pix_to_mbus(const struct v4l2_pix_format *pix,
 			   struct v4l2_mbus_framefmt *mbus)
 {
+	unsigned int i;
+
 	memset(mbus, 0, sizeof(*mbus));
 	mbus->width = pix->width;
 	mbus->height = pix->height;
 
-	switch (pix->pixelformat) {
-	case V4L2_PIX_FMT_SGRBG10:
-		mbus->code = V4L2_MBUS_FMT_SGRBG10_1X10;
-		break;
-	case V4L2_PIX_FMT_SGRBG10DPCM8:
-		mbus->code = V4L2_MBUS_FMT_SGRBG10_DPCM8_1X8;
-		break;
-	case V4L2_PIX_FMT_YUYV:
-		mbus->code = V4L2_MBUS_FMT_YUYV8_1X16;
-		break;
-	case V4L2_PIX_FMT_UYVY:
-	default:
-		mbus->code = V4L2_MBUS_FMT_UYVY8_1X16;
-		break;
+	for (i = 0; i < ARRAY_SIZE(formats); ++i) {
+		if (formats[i].pixelformat == pix->pixelformat)
+			break;
 	}
 
+	if (WARN_ON(i == ARRAY_SIZE(formats)))
+		return;
+
+	mbus->code = formats[i].code;
 	mbus->colorspace = pix->colorspace;
 	mbus->field = pix->field;
 }
@@ -281,18 +299,14 @@ EXPORT_SYMBOL_GPL(isp_video_pix_to_mbus);
 enum v4l2_mbus_pixelcode
 isp_video_uncompressed_code(enum v4l2_mbus_pixelcode code)
 {
-	switch (code) {
-	case V4L2_MBUS_FMT_SBGGR10_DPCM8_1X8:
-		return V4L2_MBUS_FMT_SBGGR10_1X10;
-	case V4L2_MBUS_FMT_SGRBG10_DPCM8_1X8:
-		return V4L2_MBUS_FMT_SGRBG10_1X10;
-	case V4L2_MBUS_FMT_SRGGB10_DPCM8_1X8:
-		return V4L2_MBUS_FMT_SRGGB10_1X10;
-	case V4L2_MBUS_FMT_SGBRG10_DPCM8_1X8:
-		return V4L2_MBUS_FMT_SGBRG10_1X10;
-	default:
-		return code;
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_SIZE(formats); ++i) {
+		if (formats[i].code == code)
+			return formats[i].uncompressed;
 	}
+
+	return code;
 }
 
 /* -----------------------------------------------------------------------------

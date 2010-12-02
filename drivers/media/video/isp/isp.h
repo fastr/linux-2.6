@@ -121,6 +121,7 @@ struct isp_reg {
 
 /**
  * struct isp_parallel_platform_data - Parallel interface platform data
+ * @width: Parallel bus width in bits (8, 10, 11 or 12)
  * @data_lane_shift: Data lane shifter
  *		0 - CAMEXT[13:0] -> CAM[13:0]
  *		1 - CAMEXT[13:2] -> CAM[11:0]
@@ -134,6 +135,7 @@ struct isp_reg {
  *		ISPCTRL_PAR_BRIDGE_BENDIAN - Big endian
  */
 struct isp_parallel_platform_data {
+	unsigned int width;
 	unsigned int data_lane_shift:2;
 	unsigned int clk_pol:1;
 	unsigned int bridge:4;
