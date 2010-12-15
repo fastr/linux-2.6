@@ -1,10 +1,32 @@
 FSR172X Kernel Support
 ====
 
+12-bit general data acquisition via CCDC.
+
+Attach data lines to the ribbon cable of the Gumstix Overo (or any OMAP device).
+
+The device must generate HD/VD (Horizontal-Sync/Vertical-Sync) signals and [`media-ctl`](github.com/fastr/media-ctl) must be used to configure the CCDC pipeline. The size of the capture must match the HD/VD signals being generated. The device should be able to buffer (i.e. hardware FIFO) a few "frames" of data so that a pause can be issued during VD.
+
+GPIO23 is used to signal to the hardware to turn capture on or off. By default it is on.
+
+Building the Kernel
+====
+
+    git clone git://github.com/fastr/linux-2.6.git
+    cd linux-2.6
+    git checkout overo-fsr172x-2.6.36
+
     ARCH=arm
     CROSS_COMPILE=~/overo-oe/tmp/sysroots/i686-linux/usr/armv7a/bin/arm-angstrom-linux-gnueabi-
     make overo_fsr172x_defconfig
     make uImage
+
+[Click here to lend your support to: FSR172X - CCDC General Data Acquisition Driver for Gumstix Overo and make a donation at www.pledgie.com !][1]
+
+[![Click here to lend your support to: FSR172X - CCDC General Data Acquisition Driver for Gumstix Overo and make a donation at www.pledgie.com !][2]][1]
+
+[1]: http://www.pledgie.com/campaigns/14204
+[2]: http://www.pledgie.com/campaigns/14204.png?skin_name=chrome
 
 Merging FSR172X support into Gumstix Overo
 ====
