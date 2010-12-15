@@ -62,7 +62,6 @@ static struct mtd_partition omap3beagle_nand_partitions[] = {
 		.name		= "U-Boot",
 		.offset		= MTDPART_OFS_APPEND,	/* Offset = 0x80000 */
 		.size		= 15 * NAND_BLOCK_SIZE,
-		.mask_flags	= MTD_WRITEABLE,	/* force read-only */
 	},
 	{
 		.name		= "U-Boot Env",
@@ -111,7 +110,6 @@ static struct omap_dss_device beagle_dvi_device = {
 	.name = "dvi",
 	.driver_name = "generic_panel",
 	.phy.dpi.data_lines = 24,
-	.reset_gpio = 170,
 	.platform_enable = beagle_enable_dvi,
 	.platform_disable = beagle_disable_dvi,
 };
@@ -203,12 +201,31 @@ static int beagle_twl_gpio_setup(struct device *dev,
 	 * power switch and overcurrent detect
 	 */
 
-	gpio_request(gpio + 1, "EHCI_nOC");
-	gpio_direction_input(gpio + 1);
+	if (cpu_is_omap3630()) {
+		/* DVI reset GPIO is different between revisions */	
+		beagle_dvi_device.reset_gpio = 129;
 
-	/* TWL4030_GPIO_MAX + 0 == ledA, EHCI nEN_USB_PWR (out, active low) */
-	gpio_request(gpio + TWL4030_GPIO_MAX, "nEN_USB_PWR");
-	gpio_direction_output(gpio + TWL4030_GPIO_MAX, 0);
+		gpio_request(gpio + 1, "nDVI_PWR_EN");
+		gpio_direction_output(gpio + 1, 0);
+
+		gpio_request(gpio + 2, "DVI_PUP");
+		gpio_direction_output(gpio + 2, 1);
+
+		/* TWL4030_GPIO_MAX + 0 == ledA, EHCI nEN_USB_PWR (out, active low) */
+		gpio_request(gpio + TWL4030_GPIO_MAX, "nEN_USB_PWR");
+		gpio_direction_output(gpio + TWL4030_GPIO_MAX, 1);
+	}
+	else {
+		/* DVI reset GPIO is different between revisions */ 
+		beagle_dvi_device.reset_gpio = 170;
+				
+		gpio_request(gpio + 1, "EHCI_nOC");
+		gpio_direction_input(gpio + 1);
+
+		/* TWL4030_GPIO_MAX + 0 == ledA, EHCI nEN_USB_PWR (out, active low) */
+		gpio_request(gpio + TWL4030_GPIO_MAX, "nEN_USB_PWR");
+		gpio_direction_output(gpio + TWL4030_GPIO_MAX, 0);
+	}
 
 	/* TWL4030_GPIO_MAX + 1 == ledB, PMU_STAT (out, active low LED) */
 	gpio_leds[2].gpio = gpio + TWL4030_GPIO_MAX + 1;
@@ -299,6 +316,10 @@ static struct twl4030_codec_data beagle_codec_data = {
 	.audio = &beagle_audio_data,
 };
 
+static struct twl4030_madc_platform_data beagle_madc_data = {
+	.irq_line	= 1,
+};
+
 static struct twl4030_platform_data beagle_twldata = {
 	.irq_base	= TWL4030_IRQ_BASE,
 	.irq_end	= TWL4030_IRQ_END,
@@ -307,6 +328,7 @@ static struct twl4030_platform_data beagle_twldata = {
 	.usb		= &beagle_usb_data,
 	.gpio		= &beagle_gpio_data,
 	.codec		= &beagle_codec_data,
+	.madc		= &beagle_madc_data,
 	.vmmc1		= &beagle_vmmc1,
 	.vsim		= &beagle_vsim,
 	.vdac		= &beagle_vdac,
@@ -457,7 +479,13 @@ static struct omap_board_mux board_mux[] __initdata = {
 
 static struct omap_musb_board_data musb_board_data = {
 	.interface_type		= MUSB_INTERFACE_ULPI,
+#if defined(CONFIG_USB_MUSB_OTG)
 	.mode			= MUSB_OTG,
+#elif defined(CONFIG_USB_GADGET_MUSB_HDRC)
+	.mode			= MUSB_PERIPHERAL,
+#else
+	.mode			= MUSB_HOST,
+#endif
 	.power			= 100,
 };
 
@@ -468,11 +496,6 @@ static void __init omap3_beagle_init(void)
 	platform_add_devices(omap3_beagle_devices,
 			ARRAY_SIZE(omap3_beagle_devices));
 	omap_serial_init();
-
-	omap_mux_init_gpio(170, OMAP_PIN_INPUT);
-	gpio_request(170, "DVI_nPD");
-	/* REVISIT leave DVI powered down until it's needed ... */
-	gpio_direction_output(170, true);
 
 	usb_musb_init(&musb_board_data);
 	usb_ehci_init(&ehci_pdata);

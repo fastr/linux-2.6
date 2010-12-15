@@ -27,7 +27,6 @@
 #include <linux/gpio.h>
 #include <linux/spi/spi.h>
 #include <linux/spi/ads7846.h>
-#include <linux/regulator/consumer.h>
 #include <asm/irq.h>
 
 /*
@@ -91,7 +90,6 @@ struct ads7846 {
 	char			name[32];
 
 	struct spi_device	*spi;
-	struct regulator	*reg;
 
 #if defined(CONFIG_HWMON) || defined(CONFIG_HWMON_MODULE)
 	struct attribute_group	*attr_group;
@@ -855,8 +853,6 @@ static void ads7846_disable(struct ads7846 *ts)
 		}
 	}
 
-	regulator_disable(ts->reg);
-
 	/* we know the chip's in lowpower mode since we always
 	 * leave it that way after every request
 	 */
@@ -867,8 +863,6 @@ static void ads7846_enable(struct ads7846 *ts)
 {
 	if (!ts->disabled)
 		return;
-
-	regulator_enable(ts->reg);
 
 	ts->disabled = 0;
 	ts->irq_disabled = 0;
@@ -1257,19 +1251,6 @@ static int __devinit ads7846_probe(struct spi_device *spi)
 
 	ts->last_msg = m;
 
-	ts->reg = regulator_get(&spi->dev, "vcc");
-	if (IS_ERR(ts->reg)) {
-		err = PTR_ERR(ts->reg);
-		dev_err(&spi->dev, "unable to get regulator: %d\n", err);
-		goto err_free_gpio;
-	}
-
-	err = regulator_enable(ts->reg);
-	if (err) {
-		dev_err(&spi->dev, "unable to enable regulator: %d\n", err);
-		goto err_put_regulator;
-	}
-
 	irq_flags = pdata->irq_flags ? : IRQF_TRIGGER_FALLING;
 
 	err = request_irq(spi->irq, ads7846_irq, irq_flags,
@@ -1285,7 +1266,7 @@ static int __devinit ads7846_probe(struct spi_device *spi)
 
 	if (err) {
 		dev_dbg(&spi->dev, "irq %d busy?\n", spi->irq);
-		goto err_disable_regulator;
+		goto err_free_gpio;
 	}
 
 	err = ads784x_hwmon_register(spi, ts);
@@ -1298,10 +1279,17 @@ static int __devinit ads7846_probe(struct spi_device *spi)
 	 * the touchscreen, in case it's not connected.
 	 */
 	if (ts->model == 7845)
-		ads7845_read12_ser(&spi->dev, PWRDOWN);
+		err = ads7845_read12_ser(&spi->dev, PWRDOWN);
 	else
-		(void) ads7846_read12_ser(&spi->dev,
+		err = ads7846_read12_ser(&spi->dev,
 				READ_12BIT_SER(vaux) | ADS_PD10_ALL_ON);
+
+	/* if sample is all 0's or all 1's then there is no device on spi */
+	if ( (err == 0x000) || (err == 0xfff)) {
+		dev_info(&spi->dev, "no device detected, test read result was 0x%08X\n", err);
+		err = -ENODEV;
+		goto err_free_irq;
+	}
 
 	err = sysfs_create_group(&spi->dev.kobj, &ads784x_attr_group);
 	if (err)
@@ -1321,12 +1309,8 @@ static int __devinit ads7846_probe(struct spi_device *spi)
 	ads784x_hwmon_unregister(spi, ts);
  err_free_irq:
 	free_irq(spi->irq, ts);
- err_disable_regulator:
-	regulator_disable(ts->reg);
- err_put_regulator:
-	regulator_put(ts->reg);
  err_free_gpio:
-	if (ts->gpio_pendown != -1)
+	if (!ts->get_pendown_state && ts->gpio_pendown != -1)
 		gpio_free(ts->gpio_pendown);
  err_cleanup_filter:
 	if (ts->filter_cleanup)
@@ -1354,9 +1338,6 @@ static int __devexit ads7846_remove(struct spi_device *spi)
 	free_irq(ts->spi->irq, ts);
 	/* suspend left the IRQ disabled */
 	enable_irq(ts->spi->irq);
-
-	regulator_disable(ts->reg);
-	regulator_put(ts->reg);
 
 	if (ts->gpio_pendown != -1)
 		gpio_free(ts->gpio_pendown);

@@ -1,6 +1,14 @@
 FSR172X Kernel Support
 ====
 
+    ARCH=arm
+    CROSS_COMPILE=~/overo-oe/tmp/sysroots/i686-linux/usr/armv7a/bin/arm-angstrom-linux-gnueabi-
+    make overo_fsr172x_defconfig
+    make uImage
+
+Merging FSR172X support into Gumstix Overo
+====
+
 Obtain the choice kernels
 
     git clone git://github.com/mirrors/linux-2.6.git
@@ -37,7 +45,7 @@ Resolve the best of all worlds
 
     git remote set-head fastr overo-fsr172x-2.6
 
-Backdrop
+Merging FSR172X support into mainline
 ====
 
     mkdir fsr172x.patches
