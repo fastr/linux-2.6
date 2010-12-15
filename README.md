@@ -23,7 +23,7 @@ Checkout local copies of our favorite branches / tags
 
 Resolve the best of all worlds
 
-    git checkout torvalds-2.6.35
+    git checkout torvalds-2.6.36
     git branch overo-fsr172x-2.6.36
 
     git merge fsr172x-2.6.36
