@@ -7,7 +7,11 @@ Attach data lines to the ribbon cable of the Gumstix Overo (or any OMAP device).
 
 The device must generate HD/VD (Horizontal-Sync/Vertical-Sync) signals and [`media-ctl`](github.com/fastr/media-ctl) must be used to configure the CCDC pipeline. The size of the capture must match the HD/VD signals being generated. The device should be able to buffer (i.e. hardware FIFO) a few "frames" of data so that a pause can be issued during VD.
 
+[`yavta`](github.com/fastr/yavta) may be used to test the data acquisition.
+
 GPIO23 is used to signal to the hardware to turn capture on or off. By default it is on.
+
+Send a [message via github](https://github.com/inbox/new/fastr) if interested in further development (i.e. having the device accept VD/HD from the OMAP-ISP rather than the device generating VD/HD.
 
 Building the Kernel
 ====
