@@ -25,6 +25,7 @@ Resolve the best of all worlds
 
     git checkout torvalds-2.6.36
     git branch overo-fsr172x-2.6.36
+    git checkout overo-fsr172x-2.6.36
 
     git merge fsr172x-2.6.36
     git merge sakoman-2.6.36 # git thinks there is a conflict, but it's just an addition in the same place
