@@ -105,4 +105,5 @@ Backdrop
     Applying: omap3isp: Add 12 bit bayer support at the CCDC input
 
     git add README.md
+    git commit -m "added fsr172x general data acquisition support to omap"
     git push origin fsr172x-2.6.36
